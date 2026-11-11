@@ -1,0 +1,4 @@
+# Database password - never commit
+.env
+__pycache__/
+*.pyc

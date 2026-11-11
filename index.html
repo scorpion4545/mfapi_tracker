@@ -1,0 +1,792 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="backend.js"></script>
+</head><body>
+<title>Team Taskdesk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: glass sidebar + main column; overview = KPI tiles over a chart row, board = status columns, sheets hub = picker + merged preview */
+:root{
+  --bg:#e8eff5; --bg2:#d4e3ee; --glass:rgba(255,255,255,.72); --glass2:rgba(255,255,255,.9);
+  --line:rgba(20,60,90,.13); --fg:#0f2233; --muted:#587286; --accent:#1c7fbd; --accent-ink:#fff;
+  --accent-soft:rgba(28,127,189,.13);
+  --ok:#1f9d6b; --warn:#c98a12; --bad:#d0463b; --info:#6c5ccf; --idle:#7b8e9c;
+  --shadow:0 10px 30px rgba(20,60,90,.10);
+  --f-display:"Space Grotesk",system-ui,sans-serif; --f-body:"Inter",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a1520; --bg2:#123049; --glass:rgba(255,255,255,.055); --glass2:rgba(22,40,58,.92);
+  --line:rgba(190,225,250,.13); --fg:#e6f0f7; --muted:#8fa6b8; --accent:#55b6ec; --accent-ink:#06202f;
+  --accent-soft:rgba(85,182,236,.16);
+  --ok:#3ccb92; --warn:#f0b43c; --bad:#ff6f62; --info:#a597ff; --idle:#8a9cab;
+  --shadow:0 10px 30px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0a1520; --bg2:#123049; --glass:rgba(255,255,255,.055); --glass2:rgba(22,40,58,.92);
+  --line:rgba(190,225,250,.13); --fg:#e6f0f7; --muted:#8fa6b8; --accent:#55b6ec; --accent-ink:#06202f;
+  --accent-soft:rgba(85,182,236,.16);
+  --ok:#3ccb92; --warn:#f0b43c; --bad:#ff6f62; --info:#a597ff; --idle:#8a9cab;
+  --shadow:0 10px 30px rgba(0,0,0,.35); color-scheme:dark}
+
+html,body{min-height:100%}
+body{background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%),radial-gradient(900px 500px at -10% 110%,var(--bg2),transparent 60%);background-attachment:fixed;color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1440px;margin:0 auto}
+.glass{background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+/* sidebar */
+.side{position:sticky;top:calc(16px + env(safe-area-inset-top,0px));align-self:start;padding:16px 12px;display:flex;flex-direction:column;gap:18px;min-height:calc(100vh - 32px)}
+.brand{display:flex;gap:10px;align-items:center;padding:0 6px}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:700}
+.brand b{font-family:var(--f-display);font-size:15px;display:block}
+.brand small{color:var(--muted);font-size:12px}
+.navlabel{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 10px;margin-bottom:4px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;color:var(--fg);text-decoration:none;font-weight:500}
+.nav a:hover{background:var(--accent-soft)}
+.nav a.on{background:var(--accent);color:var(--accent-ink)}
+.nav a .ct{margin-left:auto;font-size:11px;font-family:var(--f-mono);opacity:.75}
+.nav svg{width:16px;height:16px;flex:none}
+.side .foot{margin-top:auto;font-size:12px;color:var(--muted);padding:10px;border-top:1px solid var(--line)}
+/* main */
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.top{display:flex;gap:12px;align-items:center;padding:10px 12px}
+.search{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--glass);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.search input{border:0;background:transparent;outline:none;flex:1;min-width:0}
+.me{display:flex;align-items:center;gap:8px;font-weight:500}
+.me img{width:30px;height:30px;border-radius:50%}
+.hero{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+h1{font-family:var(--f-display);font-size:30px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--f-display);font-size:16px;margin:0}
+.sub{color:var(--muted);margin-top:4px}
+.btn{border:1px solid var(--line);background:var(--glass);padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:500;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;text-decoration:none;color:var(--fg)}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.ghost{background:transparent}
+.btn.danger{color:var(--bad)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.tile{padding:16px;display:flex;flex-direction:column;gap:6px}
+.tile .n{font-family:var(--f-display);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.tile .l{font-weight:500}
+.tile .h{color:var(--muted);font-size:12px}
+.tile .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);margin-bottom:6px}
+.tile.alert .ic{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.grid2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:12px}
+.panel{padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.chart svg{width:100%;height:auto;display:block}
+.legend{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:13px}
+.legend span{display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+/* list */
+.list{display:flex;flex-direction:column}
+.li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:10px 4px;border-top:1px solid var(--line);cursor:pointer}
+.li:first-child{border-top:0}
+.li:hover{background:var(--accent-soft);border-radius:8px}
+.li .t{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.st-todo{background:color-mix(in srgb,var(--idle) 18%,transparent);color:var(--idle)}
+.st-progress{background:var(--accent-soft);color:var(--accent)}
+.st-review{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--info)}
+.st-blocked{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.st-done{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+.pr-high{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+.pr-medium{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.pr-low{color:var(--muted);border-color:var(--line)}
+.due{font-family:var(--f-mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.due.over{color:var(--bad);font-weight:600}
+.due.soon{color:var(--warn)}
+.avs{display:flex}
+.av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:600;color:#fff;border:2px solid var(--glass2);margin-left:-6px}
+.avs .av:first-child{margin-left:0}
+/* board */
+.board{display:grid;grid-template-columns:repeat(5,minmax(220px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+.col{padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px}
+.col.drag{border-color:var(--accent)}
+.col-h{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 6px}
+.card{background:var(--glass2);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;box-shadow:var(--shadow)}
+.card:hover{border-color:var(--accent)}
+.card .t{font-weight:600}
+.bar{height:5px;border-radius:5px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:5px}
+.meta{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.chip svg{width:13px;height:13px}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+select.f,input.f{background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(5,15,25,.45);z-index:30}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);z-index:31;background:var(--glass2);border-left:1px solid var(--line);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.drawer-h{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.drawer-b{flex:1;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.drawer-f{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
+label.fl{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+label.fl input,label.fl select,label.fl textarea{text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;color:var(--fg);background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.picks{display:flex;flex-wrap:wrap;gap:6px}
+.pick{border:1px solid var(--line);border-radius:999px;padding:4px 10px 4px 4px;display:inline-flex;gap:6px;align-items:center;cursor:pointer;background:var(--glass);font-size:13px}
+.pick .av{margin:0;border:0;width:20px;height:20px;font-size:9.5px}
+.pick.on{border-color:var(--accent);background:var(--accent-soft)}
+.sheet{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--glass)}
+.sheet a{color:var(--accent);text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.sheet small{color:var(--muted);font-family:var(--f-mono);font-size:11px}
+.sicon{width:28px;height:28px;border-radius:8px;background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok);display:grid;place-items:center}
+.feed{display:flex;flex-direction:column;gap:10px}
+.ev{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;font-size:13px}
+.ev .when{color:var(--muted);font-size:11.5px;font-family:var(--f-mono)}
+.ev.note .txt{background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin-top:3px;white-space:pre-wrap}
+/* sheets hub */
+.srcs{display:flex;flex-direction:column;gap:8px}
+.src{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--glass)}
+.src .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.src .from{font-size:12px;color:var(--muted)}
+.tbl{overflow:auto;max-height:440px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;font-size:12.5px;width:max-content;min-width:100%}
+th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+th{position:sticky;top:0;background:var(--glass2);font-weight:600}
+td{font-variant-numeric:tabular-nums}
+td.srccol{color:var(--accent);font-weight:500}
+.note{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--glass);font-size:13px}
+.note.err{border-color:color-mix(in srgb,var(--bad) 50%,transparent);color:var(--bad)}
+.note.ok{border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.note a{color:var(--accent)}
+.example{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 14px;border:1px dashed var(--accent);border-radius:12px;background:var(--accent-soft);font-size:13px}
+.empty{padding:30px 16px;text-align:center;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:50;font-weight:500;box-shadow:var(--shadow)}
+.team{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.member{padding:14px;display:flex;flex-direction:column;gap:10px}
+.member .hd{display:flex;gap:10px;align-items:center}
+.member .hd .av{width:38px;height:38px;font-size:14px;margin:0;border:0}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
+.stats b{font-family:var(--f-display);font-size:18px;display:block;font-variant-numeric:tabular-nums}
+.stats span{font-size:11px;color:var(--muted)}
+.mobnav{display:none}
+@media (max-width:1100px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr}
+  .side{display:none}
+  .mobnav{display:flex;gap:4px;overflow-x:auto;padding:6px}
+  .mobnav a{padding:7px 12px;border-radius:9px;text-decoration:none;color:var(--fg);font-weight:500;white-space:nowrap}
+  .mobnav a.on{background:var(--accent);color:var(--accent-ink)}
+  h1{font-size:24px}
+  .two,.three{grid-template-columns:1fr}
+  .li{grid-template-columns:minmax(0,1fr) auto}
+  .li .avs{display:none}
+}
+@media (prefers-reduced-motion:no-preference){.card,.btn,.nav a{transition:border-color .15s,background .15s}}
+</style>
+
+<div class="app">
+  <aside class="side glass">
+    <div class="brand"><div class="logo">T</div><div><b>Taskdesk</b><small>Team workspace</small></div></div>
+    <div>
+      <div class="navlabel">Workspace</div>
+      <nav class="nav" id="nav"></nav>
+    </div>
+    <div class="foot" id="syncState">Connecting…</div>
+  </aside>
+
+  <main>
+    <div class="top glass">
+      <div class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" placeholder="Search tasks, people, sheets…" autocomplete="off">
+      </div>
+      <div class="me" id="me"></div>
+    </div>
+    <nav class="mobnav glass" id="mobnav"></nav>
+    <div id="view"></div>
+  </main>
+</div>
+<div id="overlay"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(() => {
+const STATUSES = [
+  {k:"todo", label:"To do", c:"var(--idle)"},
+  {k:"progress", label:"In progress", c:"var(--accent)"},
+  {k:"review", label:"In review", c:"var(--info)"},
+  {k:"blocked", label:"Blocked", c:"var(--bad)"},
+  {k:"done", label:"Done", c:"var(--ok)"},
+];
+const ST = Object.fromEntries(STATUSES.map(s => [s.k, s]));
+const PRI = {high:"High", medium:"Medium", low:"Low"};
+const PALETTE = ["#1c7fbd","#6c5ccf","#1f9d6b","#c9542e","#b0428a","#2e8f9a","#8a6d1f","#4b62c4"];
+
+const S = {
+  tasks: [], team: [], loaded: false, live: false, stale: false,
+  db: null, user: null, mcp: null, dl: null, meId: null, meName: "",
+  q: "", fBy: "", fPri: "",
+  merge: {sel: new Set(), uploads: [], result: null, busy: false, msg: null, created: null, dedupe: true},
+};
+
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const todayStr = () => { const d = new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const daysTo = d => d ? Math.round((new Date(d+"T00:00:00") - new Date(todayStr()+"T00:00:00"))/864e5) : null;
+const fmtDue = d => { if(!d) return "No deadline"; const n = daysTo(d); const dt = new Date(d+"T00:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short"}); if(n===0) return "Today"; if(n===1) return "Tomorrow"; if(n<0) return dt+" · "+(-n)+"d late"; return dt; };
+const dueCls = t => { if(!t.due || t.status==="done") return ""; const n = daysTo(t.due); return n<0 ? "over" : n<=2 ? "soon" : ""; };
+const isOver = t => t.due && t.status!=="done" && daysTo(t.due) < 0;
+const ago = ts => { const s = (Date.now()-ts)/1000; if(s<60) return "just now"; if(s<3600) return Math.floor(s/60)+"m ago"; if(s<86400) return Math.floor(s/3600)+"h ago"; return new Date(ts).toLocaleDateString(undefined,{day:"numeric",month:"short"}); };
+const colorFor = id => { let h=0; for(const c of String(id)) h=(h*31+c.charCodeAt(0))>>>0; return PALETTE[h%PALETTE.length]; };
+const initials = n => String(n||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase() || "?";
+const member = id => S.team.find(m => m.id===id);
+const avatar = id => { const m = member(id); const n = m ? m.name : "?"; return `<span class="av" style="background:${colorFor(id)}" title="${esc(n)}">${esc(initials(n))}</span>`; };
+const sheetIdFromUrl = u => { const m = String(u).match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/) || String(u).match(/[?&]id=([a-zA-Z0-9_-]{20,})/); return m ? m[1] : null; };
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,2600); }
+
+/* ---------- example data (shown only while the shared store is empty, never saved) ---------- */
+const EX_TEAM = [{id:"ex1",name:"Riya Sharma",role:"Analyst"},{id:"ex2",name:"Kabir Mehta",role:"Data engineer"},{id:"ex3",name:"Anaya Rao",role:"Ops lead"}];
+function exTasks(){
+  const d = n => { const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
+  const now = Date.now();
+  return [
+    {id:"e1",title:"Reconcile October AMC disclosures",status:"progress",priority:"high",assignees:["ex1","ex2"],due:d(2),progress:60,sheets:[{name:"Disclosure checklist",url:"#"},{name:"AMC coverage",url:"#"}],createdAt:now-6e8,updatedAt:now-4e6},
+    {id:"e2",title:"Client NAV report for Q3",status:"review",priority:"medium",assignees:["ex3"],due:d(5),progress:90,sheets:[{name:"NAV extract",url:"#"}],createdAt:now-9e8,updatedAt:now-2e7},
+    {id:"e3",title:"Fix ISIN mismatches in holdings",status:"blocked",priority:"high",assignees:["ex2"],due:d(-1),progress:35,sheets:[],createdAt:now-1e9,updatedAt:now-8e7},
+    {id:"e4",title:"Onboard two new AMCs",status:"todo",priority:"low",assignees:["ex1"],due:d(12),progress:0,sheets:[],createdAt:now-2e8,updatedAt:now-2e8},
+    {id:"e5",title:"Weekly data quality audit",status:"done",priority:"medium",assignees:["ex3","ex1"],due:d(-3),progress:100,sheets:[{name:"DQ log",url:"#"}],createdAt:now-1.2e9,updatedAt:now-3e8,completedAt:now-3e8},
+  ];
+}
+const showingExample = () => S.loaded && S.tasks.length===0;
+const tasksView = () => showingExample() ? exTasks() : S.tasks;
+const teamView = () => (showingExample() && S.team.length===0) ? EX_TEAM : S.team;
+
+/* ---------- routing / nav ---------- */
+const VIEWS = [
+  {k:"overview", label:"Overview", icon:'<path d="M3 13h8V3H3zM13 21h8v-8h-8zM3 21h8v-6H3zM13 11h8V3h-8z"/>'},
+  {k:"board", label:"Task board", icon:'<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>'},
+  {k:"team", label:"Team", icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14.5c2 .4 3.4 2 4 4.5"/>'},
+  {k:"sheets", label:"Sheets hub", icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>'},
+];
+const cur = () => { const h = location.hash.slice(1); return VIEWS.some(v=>v.k===h) ? h : "overview"; };
+function renderNav(){
+  const counts = {board: tasksView().filter(t=>t.status!=="done").length, team: teamView().length, sheets: allSheets().length};
+  const v = cur();
+  $("#nav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${x.icon}</svg>${x.label}${counts[x.k]!=null?`<span class="ct">${counts[x.k]}</span>`:""}</a>`).join("");
+  $("#mobnav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}">${x.label}</a>`).join("");
+}
+window.addEventListener("hashchange", render);
+$("#q").addEventListener("input", e => { S.q = e.target.value.toLowerCase(); render(); });
+
+function filtered(){
+  return tasksView().filter(t => {
+    if (S.fBy && !(t.assignees||[]).includes(S.fBy)) return false;
+    if (S.fPri && t.priority!==S.fPri) return false;
+    if (!S.q) return true;
+    const hay = [t.title, t.description, ...(t.assignees||[]).map(a=>member(a)?.name||(EX_TEAM.find(e=>e.id===a)||{}).name), ...(t.sheets||[]).map(s=>s.name)].join(" ").toLowerCase();
+    return hay.includes(S.q);
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  renderNav();
+  const v = cur();
+  const el = $("#view");
+  if (v==="board") el.innerHTML = viewBoard();
+  else if (v==="team") el.innerHTML = viewTeam();
+  else if (v==="sheets") el.innerHTML = viewSheets();
+  else el.innerHTML = viewOverview();
+  bind(v);
+  $("#syncState").innerHTML = !S.db ? (S.loaded ? "Saving is off in this view. Open the page on claude.ai while signed in to save tasks." : "Connecting…")
+    : S.local ? "Local mode · saved in this browser only" : (S.backend && S.stale) ? "Can't reach Supabase right now. Changes may not be saving." : S.backend ? `<span style="color:var(--ok)">●</span> Live · shared via Supabase` : S.stale ? "Can't reach saved data yet. Showing what loaded so far." : (S.live ?`<span style="color:var(--ok)">●</span> Live · shared with your team` : "Loading tasks…");
+}
+
+function exampleBanner(){
+  return showingExample() ? `<div class="example"><span><b>Example tasks.</b> Nothing here is saved. They disappear when you add your first real task.</span><button class="btn sm pri" data-act="new">Create first task</button></div>` : "";
+}
+
+function viewOverview(){
+  const ts = tasksView();
+  const open = ts.filter(t=>t.status!=="done");
+  const over = ts.filter(isOver);
+  const review = ts.filter(t=>t.status==="review");
+  const week = open.filter(t=>t.due && daysTo(t.due)>=0 && daysTo(t.due)<=7);
+  const done = ts.filter(t=>t.status==="done");
+  const rate = ts.length ? Math.round(done.length/ts.length*100) : 0;
+  const sheets = ts.reduce((a,t)=>a+(t.sheets||[]).length,0);
+  const people = new Set(open.flatMap(t=>t.assignees||[])).size;
+  const h = new Date().getHours();
+  const greet = h<12?"Good morning":h<17?"Good afternoon":"Good evening";
+  const upcoming = [...open].sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999")).slice(0,6);
+  const tile = (n,l,hint,icon,alert) => `<div class="tile glass ${alert?"alert":""}"><div class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg></div><div class="n">${n}</div><div class="l">${l}</div><div class="h">${hint}</div></div>`;
+  return `
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="hero">
+      <div><h1>${greet}${S.meName?", "+esc(S.meName.split(" ")[0]):""}</h1><div class="sub">${open.length} open tasks · ${over.length} overdue · ${week.length} due in the next 7 days</div></div>
+      <div class="row"><a class="btn" href="#sheets">Merge sheets</a><button class="btn pri" data-act="new">+ New task</button></div>
+    </div>
+    ${exampleBanner()}
+    <div class="tiles">
+      ${tile(open.length,"Active tasks",`${people} people working`,'<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>')}
+      ${tile(review.length,"Waiting for review","Ready for sign-off",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}
+      ${tile(over.length,"Overdue","Past their deadline",'<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>', over.length>0)}
+      ${tile(rate+"%","Completion rate",`${done.length} of ${ts.length} tasks done · ${sheets} sheets attached`,'<path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>')}
+    </div>
+    <div class="grid2">
+      <section class="panel glass"><div class="panel-h"><div><h2>Tasks completed per week</h2><div class="muted" style="font-size:12px">Last 8 weeks, by completion date</div></div></div><div class="chart">${weekChart(ts)}</div></section>
+      <section class="panel glass"><div class="panel-h"><h2>Tasks by status</h2></div>${donut(ts)}</section>
+    </div>
+    <div class="grid2">
+      <section class="panel glass"><div class="panel-h"><h2>Upcoming deadlines</h2><a class="btn sm ghost" href="#board">Open board</a></div>
+        <div class="list">${upcoming.length ? upcoming.map(rowItem).join("") : `<div class="empty">No open tasks.</div>`}</div></section>
+      <section class="panel glass"><div class="panel-h"><h2>Recent activity</h2></div><div class="feed">${recentActivity(ts)}</div></section>
+    </div>
+  </div>`;
+}
+function rowItem(t){
+  return `<div class="li" data-open="${t.id}"><div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="row" style="margin-top:4px"><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></div></div><div class="avs">${(t.assignees||[]).map(avatarAny).join("")}</div><div class="due ${dueCls(t)}">${fmtDue(t.due)}</div></div>`;
+}
+function avatarAny(id){
+  const m = member(id) || EX_TEAM.find(e=>e.id===id); const n = m?m.name:"?";
+  return `<span class="av" style="background:${colorFor(id)}" title="${esc(n)}">${esc(initials(n))}</span>`;
+}
+function recentActivity(ts){
+  const evs = ts.flatMap(t => (t.activity||[]).map(a => ({...a, task:t}))).sort((a,b)=>b.at-a.at).slice(0,7);
+  if (!evs.length) {
+    if (showingExample()) return `<div class="muted">Status changes, notes and attached sheets show up here as your team works.</div>`;
+    return `<div class="muted">No activity yet.</div>`;
+  }
+  return evs.map(e => `<div class="ev"><span class="dot" style="margin-top:6px;background:${e.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(e.by||"")}">${esc(nameOf(e.by))}</b> ${esc(e.text)} · <a href="#" data-open="${e.task.id}" style="color:var(--accent);text-decoration:none">${esc(e.task.title)}</a></div><div class="when">${ago(e.at)}</div></div></div>`).join("");
+}
+const PROF = {};
+const nameOf = id => (id && PROF[id]?.name) || (id===S.meId ? "You" : "Someone");
+async function resolveProfiles(){
+  if (!S.user) return;
+  const ids = [...new Set(S.tasks.flatMap(t=>(t.activity||[]).map(a=>a.by)).filter(Boolean))];
+  if (!ids.length) return;
+  const ps = await S.user.profiles(ids);
+  let changed = false;
+  for (const id of ids) { if ((PROF[id]?.name||"") !== (ps[id]?.name||"")) changed = true; PROF[id] = ps[id]; }
+  if (changed) document.querySelectorAll("[data-uid]").forEach(b => b.textContent = nameOf(b.dataset.uid));
+}
+
+function weekChart(ts){
+  const W=560,H=220,pl=30,pr=10,pt=14,pb=28;
+  const start = new Date(todayStr()+"T00:00:00"); start.setDate(start.getDate()-start.getDay()-7*7);
+  const weeks = Array.from({length:8},(_,i)=>{const d=new Date(start); d.setDate(d.getDate()+i*7); return d;});
+  const counts = weeks.map((w,i)=>{ const e=new Date(w); e.setDate(e.getDate()+7); return ts.filter(t=>t.status==="done"&&t.completedAt&&t.completedAt>=w.getTime()&&t.completedAt<e.getTime()).length; });
+  const max = Math.max(4, ...counts); const step = Math.ceil(max/4); const top = step*4;
+  const bw = (W-pl-pr)/8;
+  let g = "";
+  for (let i=0;i<=4;i++){ const v=step*i, y=pt+(H-pt-pb)*(1-v/top); g+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl-6}" y="${y+4}" text-anchor="end" font-size="10" fill="var(--muted)" font-family="JetBrains Mono,monospace">${v}</text>`; }
+  counts.forEach((c,i)=>{ const h=(H-pt-pb)*c/top, x=pl+i*bw+bw*.22, y=H-pb-h, last=i===7;
+    g+=`<rect x="${x}" y="${y}" width="${bw*.56}" height="${Math.max(h,0)}" rx="5" fill="var(--accent)" opacity="${last?1:.55}"/>`;
+    if(c) g+=`<text x="${x+bw*.28}" y="${y-5}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--fg)">${c}</text>`;
+    g+=`<text x="${x+bw*.28}" y="${H-10}" text-anchor="middle" font-size="10" fill="var(--muted)">${weeks[i].toLocaleDateString(undefined,{day:"numeric",month:"short"})}</text>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Tasks completed per week">${g}</svg>`;
+}
+function donut(ts){
+  const n = ts.length || 1; let a = -Math.PI/2; const R=62,r=42,cx=80,cy=80; let segs="";
+  STATUSES.forEach(s=>{ const c = ts.filter(t=>t.status===s.k).length; if(!c) return; const da = c/n*Math.PI*2 - (c===ts.length?0.0001:0);
+    const x1=cx+R*Math.cos(a),y1=cy+R*Math.sin(a),x2=cx+R*Math.cos(a+da),y2=cy+R*Math.sin(a+da),x3=cx+r*Math.cos(a+da),y3=cy+r*Math.sin(a+da),x4=cx+r*Math.cos(a),y4=cy+r*Math.sin(a); const lg=da>Math.PI?1:0;
+    segs+=`<path d="M${x1} ${y1}A${R} ${R} 0 ${lg} 1 ${x2} ${y2}L${x3} ${y3}A${r} ${r} 0 ${lg} 0 ${x4} ${y4}Z" fill="${s.c}"/>`; a+=da; });
+  if(!ts.length) segs=`<circle cx="${cx}" cy="${cy}" r="${(R+r)/2}" fill="none" stroke="var(--line)" stroke-width="${R-r}"/>`;
+  return `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap"><svg viewBox="0 0 160 160" width="150" height="150" role="img" aria-label="Tasks by status">${segs}<text x="80" y="78" text-anchor="middle" font-family="Space Grotesk,sans-serif" font-size="24" font-weight="600" fill="var(--fg)">${ts.length}</text><text x="80" y="96" text-anchor="middle" font-size="10" fill="var(--muted)">tasks</text></svg>
+  <div class="legend" style="flex:1;min-width:140px">${STATUSES.map(s=>`<span><i class="dot" style="background:${s.c}"></i>${s.label}</span><b style="font-variant-numeric:tabular-nums">${ts.filter(t=>t.status===s.k).length}</b>`).join("")}</div></div>`;
+}
+
+function filterBar(){
+  const tm = teamView();
+  return `<div class="filters"><select class="f" id="fBy" aria-label="Filter by person"><option value="">Everyone</option>${tm.map(m=>`<option value="${m.id}" ${S.fBy===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
+  <select class="f" id="fPri" aria-label="Filter by priority"><option value="">Any priority</option>${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${S.fPri===k?"selected":""}>${v}</option>`).join("")}</select></div>`;
+}
+function viewBoard(){
+  const ts = filtered();
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div class="hero"><div><h1>Task board</h1><div class="sub">Drag a card to change its status. Click it for details, sheets and notes.</div></div><div class="row">${filterBar()}<button class="btn pri" data-act="new">+ New task</button></div></div>
+    ${exampleBanner()}
+    <div class="board">${STATUSES.map(s=>{ const items = ts.filter(t=>t.status===s.k).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
+      return `<div class="col glass" data-col="${s.k}"><div class="col-h"><span class="row"><i class="dot" style="background:${s.c}"></i><b>${s.label}</b></span><span class="muted" style="font-family:var(--f-mono);font-size:12px">${items.length}</span></div>
+      ${items.map(card).join("") || `<div class="muted" style="font-size:12px;padding:8px 4px">Nothing here.</div>`}</div>`; }).join("")}</div></div>`;
+}
+function card(t){
+  return `<div class="card" draggable="true" data-open="${t.id}" data-drag="${t.id}">
+    <div class="row" style="justify-content:space-between"><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></div>
+    <div class="t">${esc(t.title)}</div>
+    <div class="bar" title="${t.progress||0}% complete"><i style="width:${t.progress||0}%"></i></div>
+    <div class="meta"><div class="avs">${(t.assignees||[]).map(avatarAny).join("") || '<span>Unassigned</span>'}</div>
+    <span class="row" style="gap:10px">${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
+}
+
+function viewTeam(){
+  const tm = teamView(); const ts = tasksView();
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div class="hero"><div><h1>Team</h1><div class="sub">Who is working on what, and what is late.</div></div></div>
+    ${exampleBanner()}
+    <section class="panel glass"><h2>Add a team member</h2>
+      <form id="addMember" class="row"><input class="f" id="mName" placeholder="Name" required style="flex:1;min-width:160px"><input class="f" id="mRole" placeholder="Role (optional)" style="flex:1;min-width:140px"><button class="btn pri" type="submit">Add member</button></form></section>
+    <div class="team">${tm.map(m=>{ const mine = ts.filter(t=>(t.assignees||[]).includes(m.id)); const open = mine.filter(t=>t.status!=="done");
+      return `<div class="member glass"><div class="hd"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span><div style="min-width:0;flex:1"><b>${esc(m.name)}</b><div class="muted" style="font-size:12px">${esc(m.role||"Team member")}</div></div>${m.id.startsWith("ex")?"":`<button class="btn sm ghost danger" data-delm="${m.id}" aria-label="Remove ${esc(m.name)}">Remove</button>`}</div>
+      <div class="stats"><div><b>${open.length}</b><span>Open</span></div><div><b style="color:${mine.filter(isOver).length?"var(--bad)":"inherit"}">${mine.filter(isOver).length}</b><span>Overdue</span></div><div><b>${mine.filter(t=>t.status==="done").length}</b><span>Done</span></div></div>
+      <div class="list">${open.slice(0,3).map(t=>`<div class="li" data-open="${t.id}" style="grid-template-columns:minmax(0,1fr) auto"><div class="t" style="font-size:13px">${esc(t.title)}</div><div class="due ${dueCls(t)}">${fmtDue(t.due)}</div></div>`).join("")}</div></div>`; }).join("") || `<div class="empty glass" style="border-radius:16px">No team members yet. Add the people who work on tasks above.</div>`}</div></div>`;
+}
+
+/* ---------- Sheets hub ---------- */
+function allSheets(){
+  return tasksView().flatMap(t => (t.sheets||[]).map((s,i) => ({...s, key:t.id+":"+i, task:t})));
+}
+function viewSheets(){
+  const sh = allSheets(); const M = S.merge;
+  const driveNote = S.mcp ? "" : `<div class="note">${(S.local||S.backend) ? "Running as a website, so Google Drive isn't connected and linked sheets can't be read." : "Google Drive isn't available in this view, so linked sheets can't be read here."} You can still upload CSV or Excel files below and merge them.</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div class="hero"><div><h1>Sheets hub</h1><div class="sub">Pick any sheets attached to tasks, add uploads, and combine them into one Google Sheet.</div></div></div>
+    ${driveNote}
+    <div class="grid2">
+      <section class="panel glass"><div class="panel-h"><h2>1. Choose sheets to merge</h2><span class="muted" style="font-size:12px">${M.sel.size+M.uploads.length} selected</span></div>
+        <div class="srcs">${sh.length ? sh.map(s => { const fid = sheetIdFromUrl(s.url); return `<label class="src"><input type="checkbox" data-sel="${s.key}" ${M.sel.has(s.key)?"checked":""} ${fid&&!s.task.id.startsWith("e")?"":"disabled"}><span class="sicon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg></span><div style="min-width:0"><div class="nm">${esc(s.name)}</div><div class="from">${esc(s.task.title)}${fid?"":" · not a Google Sheets link"}</div></div>${s.url&&s.url!=="#"?`<a class="btn sm ghost" href="${esc(s.url)}" target="_blank" rel="noopener">Open</a>`:"<span></span>"}</label>`; }).join("") : `<div class="muted">No sheets attached yet. Open a task and add Google Sheets links under “Attached sheets”.</div>`}
+        ${M.uploads.map((u,i)=>`<div class="src"><input type="checkbox" checked disabled><span class="sicon">⇪</span><div style="min-width:0"><div class="nm">${esc(u.name)}</div><div class="from">Uploaded file · ${u.tables.reduce((a,t)=>a+t.rows.length,0)} rows</div></div><button class="btn sm ghost danger" data-rmup="${i}">Remove</button></div>`).join("")}</div>
+        <div class="row"><label class="btn sm" for="upl">Upload CSV / Excel</label><input id="upl" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" multiple hidden>
+          <label class="row muted" style="font-size:13px;gap:6px"><input type="checkbox" id="dedupe" ${M.dedupe?"checked":""}>Remove duplicate rows</label></div>
+        <button class="btn pri" data-act="merge" ${(M.sel.size+M.uploads.length)<1||M.busy?"disabled":""}>${M.busy?"Reading sheets…":"Merge into one sheet"}</button>
+        ${M.msg?`<div class="note ${M.msg.kind}">${M.msg.html}</div>`:""}
+      </section>
+      <section class="panel glass"><div class="panel-h"><h2>2. Save the merged sheet</h2></div>
+        ${M.result ? `<div class="muted">${M.result.rows.length} rows × ${M.result.cols.length} columns from ${M.result.sources} sources${M.result.dropped?` · ${M.result.dropped} duplicates removed`:""}. A “Source” column records where each row came from.</div>
+          <label class="fl">New sheet name<input id="mTitle" value="${esc(M.result.title)}"></label>
+          <label class="fl">Attach it to a task (optional)<select id="mTask"><option value="">Don't attach</option>${S.tasks.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join("")}</select></label>
+          <div class="row"><button class="btn pri" data-act="create" ${S.mcp?"":"disabled"}>Create Google Sheet</button><button class="btn" data-act="csv" ${S.dl?"":"disabled"}>Save as CSV</button><button class="btn ghost" data-act="copy">Copy as CSV</button></div>
+          ${M.created?`<div class="note ok">${M.created}</div>`:""}`
+        : `<div class="muted">Columns with the same header are lined up across sheets. Columns that only exist in one sheet are kept and left blank for the others.</div><div class="empty">The merged preview appears here.</div>`}
+      </section>
+    </div>
+    ${M.result ? `<section class="panel glass"><div class="panel-h"><h2>Preview</h2><span class="muted" style="font-size:12px">First ${Math.min(100,M.result.rows.length)} rows</span></div>
+      <div class="tbl"><table><thead><tr>${M.result.cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${M.result.rows.slice(0,100).map(r=>`<tr>${r.map((v,i)=>`<td class="${i===0?"srccol":""}" title="${esc(v)}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`:""}
+  </div>`;
+}
+
+/* parsing */
+function parseCSV(text, delim){
+  const rows=[]; let row=[], f="", q=false;
+  for (let i=0;i<text.length;i++){ const c=text[i];
+    if (q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if (c==='"' && f==="") q=true;
+    else if (c===delim){ row.push(f); f=""; }
+    else if (c==="\n"||c==="\r"){ if(c==="\r"&&text[i+1]==="\n") i++; row.push(f); rows.push(row); row=[]; f=""; }
+    else f+=c; }
+  if (f!==""||row.length){ row.push(f); rows.push(row); }
+  return rows.filter(r=>r.some(c=>String(c).trim()!==""));
+}
+function parseText(text){
+  const lines = String(text).split(/\r?\n/);
+  const pipe = lines.filter(l=>/^\s*\|.*\|\s*$/.test(l)).length;
+  if (pipe >= 2){
+    const tables=[]; let curT=null;
+    for (const l of lines){
+      if (/^\s*\|.*\|\s*$/.test(l)){
+        const cells = l.trim().replace(/^\|/,"").replace(/\|$/,"").split("|").map(c=>c.trim());
+        if (cells.every(c=>/^:?-{2,}:?$/.test(c)||c==="")) continue;
+        if (!curT){ curT={header:cells,rows:[]}; tables.push(curT); } else curT.rows.push(cells);
+      } else curT=null;
+    }
+    return tables.filter(t=>t.header.length);
+  }
+  const first = lines.find(l=>l.trim())||"";
+  const delim = (first.split("\t").length > first.split(",").length) ? "\t" : ",";
+  const rows = parseCSV(String(text), delim);
+  if (!rows.length) return [];
+  return [{header:rows[0].map(h=>String(h).trim()), rows:rows.slice(1)}];
+}
+function textFromResult(res){
+  const p = res?.payload;
+  if (typeof p === "string") return p;
+  if (p && typeof p === "object"){
+    for (const k of ["content","text","fileContent","body","data"]) if (typeof p[k]==="string") return p[k];
+  }
+  const blocks = (res?.content||[]).filter(b=>b.type==="text").map(b=>b.text);
+  if (blocks.length) return blocks.join("\n");
+  return p ? JSON.stringify(p) : "";
+}
+function mergeTables(sources, dedupe){
+  const cols=[]; const keyIdx=new Map();
+  const colFor = h => { const k=h.toLowerCase().replace(/\s+/g," ").trim()||"(blank)"; if(!keyIdx.has(k)){ keyIdx.set(k,cols.length); cols.push(h.trim()||"Column "+(cols.length+1)); } return keyIdx.get(k); };
+  const out=[];
+  for (const s of sources) for (const t of s.tables){
+    const map = t.header.map(h=>colFor(String(h)));
+    for (const r of t.rows){ const o=[]; map.forEach((ci,j)=>{ o[ci]=r[j]??""; }); out.push({src:s.label,o}); }
+  }
+  let rows = out.map(x=>[x.src, ...cols.map((_,i)=>x.o[i]??"")]);
+  let dropped=0;
+  if (dedupe){ const seen=new Set(); rows=rows.filter(r=>{ const k=JSON.stringify(r.slice(1)); if(seen.has(k)){dropped++;return false;} seen.add(k); return true; }); }
+  return {cols:["Source",...cols], rows, dropped};
+}
+const toCSV = r => [r.cols, ...r.rows].map(row=>row.map(v=>{ const s=String(v??""); return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(",")).join("\n");
+
+function mcpErr(e, what){
+  const c = e?.code;
+  if (c==="needs_reauth") return "Google Drive needs to be reconnected. Reconnect it in claude.ai Settings → Connectors, then try again.";
+  if (c==="server_not_connected"||c==="selection_required") return "Google Drive isn't connected for you. Add it in claude.ai Settings → Connectors, then try again.";
+  if (c==="not_in_manifest") return "Google Drive isn't allowed for this page. Turn it on in this artifact's Permissions menu.";
+  if (c==="approval_required") return "This needs your approval. Click the button again and allow Google Drive when asked.";
+  if (c==="blocked_by_policy") return "Your organization blocks this Google Drive action.";
+  if (c==="tool_error") return `Google Drive couldn't ${what}: ${e.message||"unknown error"}. Check that the link is a Google Sheet you can open.`;
+  if (c==="server_unavailable") return "Google Drive didn't answer in time. Try again in a moment.";
+  return `Couldn't ${what} (${c||"error"}).`;
+}
+
+async function doMerge(){
+  const M=S.merge; M.busy=true; M.msg=null; M.created=null; render();
+  const sel = allSheets().filter(s=>M.sel.has(s.key));
+  const sources=[]; const errs=[];
+  for (const s of sel){
+    const fileId = sheetIdFromUrl(s.url);
+    if (!S.mcp){ errs.push(`${esc(s.name)}: Google Drive isn't connected here. Download it as CSV or Excel and upload it instead.`); continue; }
+    try {
+      const res = await S.mcp.callTool("Google Drive","read_file_content",{fileId});
+      const tables = parseText(textFromResult(res));
+      if (!tables.length || !tables.some(t=>t.rows.length)) errs.push(`${esc(s.name)}: no table rows found in the sheet.`);
+      else sources.push({label:s.name, tables});
+    } catch(e){ errs.push(`${esc(s.name)}: ${esc(mcpErr(e,"read this sheet"))}`); }
+  }
+  for (const u of M.uploads) sources.push({label:u.name, tables:u.tables});
+  M.busy=false;
+  if (!sources.length){ M.result=null; M.msg={kind:"err", html:errs.join("<br>")||"Nothing to merge."}; render(); return; }
+  const r = mergeTables(sources, M.dedupe);
+  M.result = {...r, sources:sources.length, title:`Merged sheet ${todayStr()}`};
+  M.msg = errs.length ? {kind:"err", html:"Merged the rest, but skipped:<br>"+errs.join("<br>")} : {kind:"ok", html:`Merged ${sources.length} sources.`};
+  render();
+}
+async function createSheet(){
+  const M=S.merge; const title = ($("#mTitle")?.value||M.result.title).replace(/[\r\n\t]/g," ").trim()||"Merged sheet";
+  const taskId = $("#mTask")?.value||"";
+  const btn = document.querySelector('[data-act="create"]'); if(btn){btn.disabled=true;btn.textContent="Creating…";}
+  try {
+    const res = await S.mcp.callTool("Google Drive","create_file",{title, textContent:toCSV(M.result), contentMimeType:"text/csv"});
+    const p = res.payload||{};
+    const id = p.id || p.fileId || p.file?.id;
+    const url = p.webViewLink || p.url || p.file?.webViewLink || (id?`https://docs.google.com/spreadsheets/d/${id}/edit`:"");
+    M.created = url ? `Created <a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)}</a> in your Google Drive.` : `Created “${esc(title)}” in your Google Drive.`;
+    if (taskId && url){ const t=S.tasks.find(x=>x.id===taskId); if(t){ const nt={...t, sheets:[...(t.sheets||[]),{name:title,url}]}; logAct(nt,`attached merged sheet “${title}”`); await saveTask(nt); M.created+=" Attached to the task."; } }
+  } catch(e){ M.created = null; M.msg={kind:"err",html:esc(mcpErr(e,"create the sheet"))+(["server_unavailable","upstream_error"].includes(e?.code)?" It may still have been created, so check Google Drive before trying again.":"")}; }
+  render();
+}
+
+/* ---------- drawer ---------- */
+let D = null; // draft task
+function openTask(id){
+  if (showingExample() && id){ toast("This is an example task. Create a real one to edit it."); return; }
+  const t = id ? S.tasks.find(x=>x.id===id) : null;
+  D = t ? JSON.parse(JSON.stringify(t)) : {id:null,title:"",description:"",status:"todo",priority:"medium",assignees:[],due:"",progress:0,sheets:[],activity:[]};
+  D._orig = t ? {status:t.status, progress:t.progress} : null;
+  drawDrawer();
+}
+function drawDrawer(){
+  const isNew = !D.id;
+  $("#overlay").innerHTML = `<div class="scrim" data-act="close"></div><div class="drawer" role="dialog" aria-modal="true" aria-label="${isNew?"New task":"Task details"}">
+    <div class="drawer-h"><h2>${isNew?"New task":"Task details"}</h2><button class="btn sm ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div class="drawer-b">
+      <label class="fl">Task<input id="dTitle" value="${esc(D.title)}" placeholder="What needs to be done?"></label>
+      <label class="fl">Details<textarea id="dDesc" rows="3" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
+      <div class="three">
+        <label class="fl">Status<select id="dStatus">${STATUSES.map(s=>`<option value="${s.k}" ${D.status===s.k?"selected":""}>${s.label}</option>`).join("")}</select></label>
+        <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
+        <label class="fl">Deadline<input id="dDue" type="date" value="${esc(D.due)}"></label>
+      </div>
+      <label class="fl">Progress · <span id="dProgV">${D.progress||0}%</span><input id="dProg" type="range" min="0" max="100" step="5" value="${D.progress||0}"></label>
+      <div class="fl">Working on it
+        <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="#team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
+      <div class="fl">Attached sheets
+        <div style="display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:0;font-weight:400">
+          ${D.sheets.map((s,i)=>`<div class="sheet"><span class="sicon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg></span><div style="min-width:0"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a><small>${sheetIdFromUrl(s.url)?"Google Sheet":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>`).join("") || `<span class="muted">No sheets yet.</span>`}
+          <div class="row"><input class="f" id="sName" placeholder="Sheet name" style="flex:1;min-width:120px"><input class="f" id="sUrl" placeholder="Paste Google Sheets link" style="flex:2;min-width:180px"><button class="btn sm" type="button" data-act="addsheet">Attach</button></div>
+          ${D.sheets.filter(s=>sheetIdFromUrl(s.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis">Merge this task's sheets into one</button>`:""}
+        </div></div>
+      ${isNew ? "" : `<div class="fl">Notes & activity
+        <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
+          <div class="row"><input class="f" id="nText" placeholder="Add an update for the team" style="flex:1"><button class="btn sm" type="button" data-act="note">Post</button></div>
+          <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
+    </div>
+    <div class="drawer-f">${isNew?"<span></span>":`<button class="btn ghost danger" data-act="del">Delete task</button>`}<div class="row"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div></div>`;
+  const ov = $("#overlay");
+  ov.querySelector("#dProg").addEventListener("input", e => ov.querySelector("#dProgV").textContent = e.target.value+"%");
+  ov.querySelector("#dTitle").focus();
+}
+function readDrawer(){
+  const ov=$("#overlay");
+  D.title = ov.querySelector("#dTitle").value.trim();
+  D.description = ov.querySelector("#dDesc").value.trim();
+  D.status = ov.querySelector("#dStatus").value;
+  D.priority = ov.querySelector("#dPri").value;
+  D.due = ov.querySelector("#dDue").value;
+  D.progress = +ov.querySelector("#dProg").value;
+}
+function logAct(t, text, type="event"){
+  const e = {at:Date.now(), by:S.meId||"", text, type};
+  if (S.backend) e.byName = S.meName; // website mode: no profile service, so keep the author's name
+  t.activity = [...(t.activity||[]), e].slice(-40);
+}
+function closeDrawer(){ $("#overlay").innerHTML=""; D=null; }
+
+let writing = Promise.resolve();
+function saveTask(t){
+  const clean = {...t}; delete clean._orig;
+  const id = clean.id; delete clean.id;
+  clean.updatedAt = Date.now();
+  writing = writing.then(()=>S.db.collection("tasks").doc(id).set(clean)).catch(e=>{ toast(e?.code==="invalid_argument"?"You can view tasks but not change them.":e?.code==="quota_exceeded"?"The task store is full. Delete old tasks first.":"Couldn't save. Try again."); throw e; });
+  return writing;
+}
+async function onSave(){
+  readDrawer();
+  if (!D.title){ toast("Give the task a name."); $("#dTitle").focus(); return; }
+  if (!S.db){ toast("Saving is off in this view."); return; }
+  const isNew = !D.id;
+  if (isNew){ D.id = S.db.collection("tasks").doc().id; D.createdAt = Date.now(); D.createdBy = S.meId||""; logAct(D,"created the task"); }
+  else {
+    if (D._orig.status!==D.status) logAct(D,`moved it to ${ST[D.status].label}`);
+    else if (D._orig.progress!==D.progress) logAct(D,`set progress to ${D.progress}%`);
+  }
+  if (D.status==="done" && !D.completedAt){ D.completedAt=Date.now(); D.progress=100; }
+  if (D.status!=="done") delete D.completedAt;
+  const t = D; closeDrawer();
+  try { await saveTask(t); toast(isNew?"Task created":"Saved"); } catch {}
+}
+
+/* ---------- events ---------- */
+function bind(v){
+  const view = $("#view");
+  view.querySelectorAll("#fBy,#fPri").forEach(s => s.addEventListener("change", e => { S[e.target.id] = e.target.value; render(); }));
+  if (v==="board"){
+    view.querySelectorAll("[data-drag]").forEach(c => c.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", c.dataset.drag)));
+    view.querySelectorAll("[data-col]").forEach(col => {
+      col.addEventListener("dragover", e => { e.preventDefault(); col.classList.add("drag"); });
+      col.addEventListener("dragleave", () => col.classList.remove("drag"));
+      col.addEventListener("drop", async e => { e.preventDefault(); col.classList.remove("drag");
+        const id = e.dataTransfer.getData("text/plain"); const t = S.tasks.find(x=>x.id===id);
+        if (!t){ if(showingExample()) toast("Example tasks can't be moved. Create a real one."); return; }
+        if (t.status===col.dataset.col) return;
+        const nt = {...t, status:col.dataset.col}; logAct(nt,`moved it to ${ST[nt.status].label}`);
+        if (nt.status==="done"){ nt.completedAt=Date.now(); nt.progress=100; } else delete nt.completedAt;
+        try { await saveTask(nt); } catch {} });
+    });
+  }
+  const am = $("#addMember");
+  if (am) am.addEventListener("submit", async e => { e.preventDefault(); const name=$("#mName").value.trim(); if(!name) return; if(!S.db){toast("Saving is off in this view.");return;}
+    try { await S.db.collection("team").add({name, role:$("#mRole").value.trim(), addedAt:Date.now()}); toast("Member added"); } catch(err){ toast(err?.code==="invalid_argument"?"You can view the team but not change it.":"Couldn't add member."); } });
+  const up = $("#upl");
+  if (up) up.addEventListener("change", async e => {
+    for (const f of e.target.files){
+      try {
+        let tables=[];
+        if (/\.xlsx?$/i.test(f.name)){
+          if (!window.XLSX){ toast("Excel support didn't load. Save the file as CSV."); continue; }
+          const wb = XLSX.read(await f.arrayBuffer(), {type:"array"});
+          tables = wb.SheetNames.map(n => { const a = XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:"",raw:false}).filter(r=>r.some(c=>String(c).trim()!=="")); return a.length?{header:a[0].map(String),rows:a.slice(1)}:null; }).filter(Boolean);
+        } else tables = parseText(await f.text());
+        if (!tables.length) { toast(`${f.name} has no rows.`); continue; }
+        S.merge.uploads.push({name:f.name, tables});
+      } catch { toast(`Couldn't read ${f.name}.`); }
+    }
+    render();
+  });
+  const dd = $("#dedupe"); if (dd) dd.addEventListener("change", e => { S.merge.dedupe = e.target.checked; });
+  view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
+}
+document.addEventListener("click", async e => {
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup]");
+  if (!a) return;
+  if (a.dataset.open && !e.target.closest("a[target]")) { e.preventDefault(); openTask(a.dataset.open); return; }
+  if (a.dataset.pick){ const id=a.dataset.pick; D.assignees = D.assignees.includes(id) ? D.assignees.filter(x=>x!==id) : [...D.assignees,id]; a.classList.toggle("on"); a.setAttribute("aria-pressed", D.assignees.includes(id)); return; }
+  if (a.dataset.rmsheet){ readDrawer(); const s=D.sheets.splice(+a.dataset.rmsheet,1)[0]; if(D.id) logAct(D,`removed sheet “${s.name}”`); drawDrawer(); return; }
+  if (a.dataset.rmup){ S.merge.uploads.splice(+a.dataset.rmup,1); render(); return; }
+  if (a.dataset.delm){ const id=a.dataset.delm; if(a.dataset.confirm!=="1"){ a.dataset.confirm="1"; a.textContent="Confirm remove"; return; }
+    try { await S.db.doc("team/"+id).delete(); toast("Member removed"); } catch { toast("Couldn't remove member."); } return; }
+  const act = a.dataset.act;
+  if (act==="new") openTask(null);
+  else if (act==="close"){ if (a.tagName!=="A") e.preventDefault(); closeDrawer(); }
+  else if (act==="save") onSave();
+  else if (act==="del"){ if(a.dataset.confirm!=="1"){ a.dataset.confirm="1"; a.textContent="Click again to delete"; return; } const id=D.id; closeDrawer(); try{ await S.db.doc("tasks/"+id).delete(); toast("Task deleted"); }catch{ toast("Couldn't delete."); } }
+  else if (act==="addsheet"){ readDrawer(); const url=$("#sUrl").value.trim(); if(!url){toast("Paste a sheet link.");return;} if(!/^https?:\/\//i.test(url)){toast("That doesn't look like a link.");return;}
+    const name=$("#sName").value.trim() || (sheetIdFromUrl(url)?"Google Sheet "+(D.sheets.length+1):url.replace(/^https?:\/\//,"").slice(0,40));
+    D.sheets.push({name,url}); if(D.id) logAct(D,`attached sheet “${name}”`); drawDrawer(); }
+  else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig={status:t.status,progress:t.progress}; drawDrawer(); }catch{} }
+  else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; location.hash="sheets"; }
+  else if (act==="merge") doMerge();
+  else if (act==="create") createSheet();
+  else if (act==="csv"){ const title=($("#mTitle")?.value||"merged").replace(/[^\w\- ]+/g,"").trim()||"merged"; try{ await S.dl.save({filename:title+".csv", data:new Blob([toCSV(S.merge.result)],{type:"text/csv"})}); }catch(err){ if(err?.code!=="cancelled"&&err?.code!=="declined") toast("The file wasn't saved."); } }
+  else if (act==="copy"){ const csv=toCSV(S.merge.result); try{ await navigator.clipboard.writeText(csv); toast("Copied. Paste into any sheet."); }catch{ toast("Copy isn't allowed here. Use Save as CSV."); } }
+});
+document.addEventListener("keydown", e => { if (e.key==="Escape" && D) closeDrawer(); });
+
+/* ---------- local mode: browser storage stands in for the shared store ---------- */
+function localDb(){
+  const KEY = "taskdesk-local-v1";
+  let store = {}; try { store = JSON.parse(localStorage.getItem(KEY)||"{}"); } catch {}
+  const subs = [];
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch {} subs.forEach(s=>s()); };
+  const newId = () => Math.random().toString(36).slice(2,12)+Date.now().toString(36);
+  const docRef = (col, id) => ({ id,
+    set: async d => { (store[col] ||= {})[id] = JSON.parse(JSON.stringify(d)); persist(); },
+    delete: async () => { if (store[col]) delete store[col][id]; persist(); } });
+  const colRef = (col, ord) => ({
+    doc: id => docRef(col, id || newId()),
+    add: async d => { const r = docRef(col, newId()); await r.set(d); return r; },
+    orderBy: f => colRef(col, f),
+    onSnapshot: next => { const fire = () => { let docs = Object.entries(store[col]||{}).map(([id,d]) => ({id, exists:true, data:()=>d}));
+        if (ord) docs.sort((a,b)=>(a.data()[ord]??0)-(b.data()[ord]??0));
+        next({docs, size:docs.length, empty:!docs.length, metadata:{fromCache:false,hasPendingWrites:false}}); };
+      subs.push(fire); setTimeout(fire); return () => {}; } });
+  window.addEventListener("storage", e => { if (e.key===KEY){ try { store = JSON.parse(e.newValue||"{}"); } catch {} subs.forEach(s=>s()); } });
+  return { collection: c => colRef(c), doc: p => { const [c,id] = p.split("/"); return docRef(c,id); } };
+}
+const localDownloads = { save: async ({filename, data}) => { const a = document.createElement("a"); a.href = URL.createObjectURL(data); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000); } };
+
+/* ---------- boot ---------- */
+render();
+(async () => {
+  if (!window.claude?.use && window.TaskdeskBackend){
+    const b = await window.TaskdeskBackend.start(err => { S.stale = true; render(); });
+    if (!b) return;
+    S.backend = b; S.db = b.db; S.dl = localDownloads; S.meId = b.me.id; S.meName = b.me.name;
+    $("#me").innerHTML = `<span class="av" style="background:${colorFor(b.me.id)};margin:0;border:0;width:30px;height:30px">${esc(initials(b.me.name))}</span><span>${esc(b.me.name)}</span><button class="btn sm ghost" id="signOut">Sign out</button>`;
+    $("#signOut").onclick = () => b.signOut();
+    let gotT = false;
+    const timer = setTimeout(() => { if (!gotT){ S.stale = true; S.loaded = true; render(); } }, 10000);
+    S.db.collection("tasks").onSnapshot(snap => { gotT = true; clearTimeout(timer); S.stale = false;
+      S.tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+      S.tasks.forEach(t => (t.activity||[]).forEach(a => { if (a.by && a.byName) PROF[a.by] = {name: a.by===S.meId ? "You" : a.byName}; }));
+      S.loaded = true; S.live = true; if (!D) render(); else renderNav(); });
+    S.db.collection("team").orderBy("addedAt").onSnapshot(snap => { S.team = snap.docs.map(d=>({id:d.id,...d.data()})); if (!D) render(); });
+    return;
+  }
+  if (!window.claude?.use){
+    S.local = true; S.db = localDb(); S.dl = localDownloads;
+    S.db.collection("tasks").onSnapshot(snap => { S.tasks = snap.docs.map(d=>({id:d.id,...d.data()})); S.loaded = true; S.live = true; if (!D) render(); else renderNav(); });
+    S.db.collection("team").orderBy("addedAt").onSnapshot(snap => { S.team = snap.docs.map(d=>({id:d.id,...d.data()})); if (!D) render(); });
+    return;
+  }
+  const [db, user, mcp, dl] = await Promise.all(["db","user","mcp","downloads"].map(n => window.claude.use(n).catch(()=>null)));
+  S.db=db; S.user=user; S.mcp=mcp; S.dl=dl;
+  if (user){ const me = await user.me(); S.meId = me.id; S.meName = me.name||"";
+    $("#me").innerHTML = `<img alt="" src="${esc(me.avatarUrl)}"><span>${esc(me.name||"You")}</span>`; }
+  if (!db){ S.loaded=true; render(); return; }
+  let got = {tasks:false, team:false};
+  const timer = setTimeout(()=>{ S.stale=true; S.loaded=true; render(); }, 10000);
+  const done = () => { if (got.tasks && got.team){ clearTimeout(timer); S.stale=false; S.loaded=true; S.live=true; } };
+  db.collection("tasks").onSnapshot(snap => {
+    S.tasks = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    if (!snap.metadata.fromCache) got.tasks = true; done();
+    if (!D) render(); else renderNav();
+    resolveProfiles();
+  }, err => { clearTimeout(timer); S.loaded=true; S.stale=true; render(); });
+  db.collection("team").orderBy("addedAt").onSnapshot(snap => {
+    S.team = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    if (!snap.metadata.fromCache) got.team = true; done();
+    if (!D) render();
+  }, err => { got.team = true; done(); render(); });
+})();
+})();
+</script>
+
+</body></html>
