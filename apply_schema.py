@@ -26,8 +26,6 @@ def db_url() -> str:
 
 def main() -> None:
     emails = [e.strip().lower() for e in sys.argv[1:] if e.strip()]
-    if not emails:
-        sys.exit("Pass at least one team email.")
     bad = [e for e in emails if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e)]
     if bad:
         sys.exit(f"Not valid emails: {bad}")
