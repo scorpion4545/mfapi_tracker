@@ -67,7 +67,7 @@
       wrap.style.cssText = "display:grid;place-items:center;background:var(--bg);z-index:60;padding:16px";
       wrap.innerHTML = `
         <form class="glass" id="loginForm" style="width:min(380px,100%);padding:24px;display:flex;flex-direction:column;gap:14px;background:var(--glass2)">
-          <div class="brand" style="padding:0"><div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V9l4 5 4-8 4 6 4-7v13"/></svg></div><div><b>mf<span>api</span></b><small>Sign in to Taskdesk</small></div></div>
+          <div class="brand" style="padding:0"><div class="logo"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" fill-opacity=".3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></div><div><b>MfAPIs</b><small>Sign in to Taskdesk</small></div></div>
           <label class="fl">Email<input id="lEmail" type="email" required autocomplete="email"></label>
           <label class="fl">Password<input id="lPass" type="password" required minlength="6" autocomplete="current-password"></label>
           <div id="lMsg" class="note" hidden></div>
