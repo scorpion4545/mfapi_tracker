@@ -1,9 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230a1520'/%3E%3Cg transform='translate(3 3) scale(.75)' fill='%2322c55e' fill-opacity='.3' stroke='%2322c55e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z'/%3E%3Cpath d='m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z'/%3E%3Cpath d='M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0'/%3E%3Cpath d='M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5'/%3E%3C/g%3E%3C/svg%3E"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
-<script src="config.js"></script>
+<script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
-<script src="backend.js"></script>
-<script src="google.js"></script>
+<script src="/backend.js"></script>
+<script src="/google.js"></script>
 </head><body>
 <title>MfAPIs Taskdesk</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -300,18 +300,20 @@ const VIEWS = [
   {k:"team", label:"Team", icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14.5c2 .4 3.4 2 4 4.5"/>'},
   {k:"sheets", label:"Sheets hub", icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>'},
 ];
-const hashTask = () => { const h = location.hash.slice(1); return h.startsWith("task-") ? h.slice(5) : null; };
-const cur = () => { const h = location.hash.slice(1); if (VIEWS.some(v=>v.k===h)) S.lastView = h; return S.lastView; };
-function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } location.hash = "task-"+id; }
+const viewPath = k => k==="overview" ? "/" : "/"+k;
+const hashTask = () => { const m = location.pathname.match(/^\/task\/([^/]+)/); return m ? decodeURIComponent(m[1]) : null; };
+const cur = () => { const h = location.pathname.split("/")[1] || "overview"; if (VIEWS.some(v=>v.k===h)) S.lastView = h; return S.lastView; };
+function nav(path, replace){ if (path !== location.pathname) history[replace?"replaceState":"pushState"](null, "", path); render(); }
+function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } nav("/task/"+encodeURIComponent(id)); }
 function syncTaskRoute(){
   const tid = hashTask();
   if (tid){
     if ((D && D.id===tid) || !S.loaded) return;
     if (S.tasks.some(t=>t.id===tid)) openTask(tid);
-    else { toast("That task doesn't exist or was deleted."); location.hash = S.lastView; }
+    else { toast("That task doesn't exist or was deleted."); nav(viewPath(S.lastView), true); }
   } else if (D && D.id){ $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; }
 }
-const taskLink = id => location.href.split("#")[0] + "#task-" + id;
+const taskLink = id => location.origin + "/task/" + encodeURIComponent(id);
 async function shareTask(id){
   const url = taskLink(id);
   try { await navigator.clipboard.writeText(url); toast("Link copied. Anyone on the team list can open it."); }
@@ -331,10 +333,12 @@ function pager(key, total, size){
 function renderNav(){
   const counts = {board: tasksView().filter(t=>t.status!=="done").length, tasks: tasksView().length, team: teamView().length, sheets: allSheets().length};
   const v = cur();
-  $("#nav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${x.icon}</svg>${x.label}${counts[x.k]!=null?`<span class="ct">${counts[x.k]}</span>`:""}</a>`).join("");
-  $("#mobnav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}">${x.label}</a>`).join("");
+  $("#nav").innerHTML = VIEWS.map(x => `<a href="${viewPath(x.k)}" class="${x.k===v?"on":""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${x.icon}</svg>${x.label}${counts[x.k]!=null?`<span class="ct">${counts[x.k]}</span>`:""}</a>`).join("");
+  $("#mobnav").innerHTML = VIEWS.map(x => `<a href="${viewPath(x.k)}" class="${x.k===v?"on":""}">${x.label}</a>`).join("");
 }
-window.addEventListener("hashchange", render);
+// Old #links (shared before the switch to clean addresses) still work: convert them once on load.
+(() => { const h = location.hash.slice(1); if (!h) return; const to = h.startsWith("task-") ? "/task/"+h.slice(5) : VIEWS.some(v=>v.k===h) ? viewPath(h) : null; if (to) history.replaceState(null, "", to); })();
+window.addEventListener("popstate", render);
 $("#q").addEventListener("input", e => { S.q = e.target.value.toLowerCase(); S.pages.tasks = 1; render(); });
 
 function filtered(){
@@ -389,7 +393,7 @@ function viewOverview(){
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="hero">
       <div><h1>${greet}${S.meName?", "+esc(S.meName.split(" ")[0]):""}</h1><div class="sub">${open.length} open tasks · ${over.length} overdue · ${week.length} due in the next 7 days</div></div>
-      <div class="row"><a class="btn" href="#sheets">Merge sheets</a><button class="btn pri" data-act="new">+ New task</button></div>
+      <div class="row"><a class="btn" href="/sheets">Merge sheets</a><button class="btn pri" data-act="new">+ New task</button></div>
     </div>
     ${exampleBanner()}
     <div class="tiles">
@@ -403,7 +407,7 @@ function viewOverview(){
       <section class="panel glass"><div class="panel-h"><h2>Tasks by status</h2></div>${donut(ts)}</section>
     </div>
     <div class="grid2">
-      <section class="panel glass"><div class="panel-h"><h2>Upcoming deadlines</h2><a class="btn sm ghost" href="#board">Open board</a></div>
+      <section class="panel glass"><div class="panel-h"><h2>Upcoming deadlines</h2><a class="btn sm ghost" href="/board">Open board</a></div>
         <div class="list">${upcoming.length ? upcoming.map(rowItem).join("") : `<div class="empty">No open tasks.</div>`}</div></section>
       <section class="panel glass"><div class="panel-h"><h2>Recent activity</h2></div><div class="feed">${recentActivity(ts)}</div></section>
     </div>
@@ -422,7 +426,7 @@ function recentActivity(ts){
     if (showingExample()) return `<div class="muted">Status changes, notes and attached sheets show up here as your team works.</div>`;
     return `<div class="muted">No activity yet.</div>`;
   }
-  return evs.map(e => `<div class="ev"><span class="dot" style="margin-top:6px;background:${e.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(e.by||"")}">${esc(nameOf(e.by))}</b> ${esc(e.text)} · <a href="#" data-open="${e.task.id}" style="color:var(--accent);text-decoration:none">${esc(e.task.title)}</a></div><div class="when">${ago(e.at)}</div></div></div>`).join("");
+  return evs.map(e => `<div class="ev"><span class="dot" style="margin-top:6px;background:${e.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(e.by||"")}">${esc(nameOf(e.by))}</b> ${esc(e.text)} · <a href="/task/${encodeURIComponent(e.task.id)}" data-open="${e.task.id}" style="color:var(--accent);text-decoration:none">${esc(e.task.title)}</a></div><div class="when">${ago(e.at)}</div></div></div>`).join("");
 }
 const PROF = {};
 const nameOf = id => (id && PROF[id]?.name) || (id===S.meId ? "You" : "Someone");
@@ -728,7 +732,7 @@ function drawDrawer(){
             <div class="row" style="margin-top:4px"><input class="f" id="cText" placeholder="Add a step, then press Enter" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="addcheck">Add</button></div>
           </div></div>
         <div class="fl">Working on it
-          <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="#team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
+          <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="/team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
         ${isNew ? "" : `<div class="fl">Notes & activity
           <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
             <div class="row"><input class="f" id="nText" placeholder="Add an update for the team, then press Enter" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="note">Post</button></div>
@@ -768,7 +772,7 @@ function logAct(t, text, type="event"){
   if (S.backend) e.byName = S.meName; // website mode: no profile service, so keep the author's name
   t.activity = [...(t.activity||[]), e].slice(-40);
 }
-function closeDrawer(){ $("#unsaved")?.remove(); $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) location.hash = S.lastView; else render(); }
+function closeDrawer(){ $("#unsaved")?.remove(); $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) nav(viewPath(S.lastView)); else render(); }
 
 let writing = Promise.resolve();
 function saveTask(t){
@@ -840,6 +844,8 @@ function bind(v){
   view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
 }
 document.addEventListener("click", async e => {
+  const link = e.target.closest('a[href^="/"]:not([target])');
+  if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
   const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort]");
   if (!a) return;
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
@@ -854,7 +860,7 @@ document.addEventListener("click", async e => {
     try { await S.db.doc("team/"+id).delete(); toast("Member removed"); } catch { toast("Couldn't remove member."); } return; }
   const act = a.dataset.act;
   if (act==="new"){ openTask(null); if (D && a.dataset.status){ D.status = a.dataset.status; drawDrawer(); D._snap = draftKey(); } }
-  else if (act==="close"){ if (D && !a.dataset.force && draftKey()!==D._snap){ e.preventDefault(); showUnsaved(); return; } if (a.tagName!=="A") e.preventDefault(); closeDrawer(); }
+  else if (act==="close"){ if (D && !a.dataset.force && draftKey()!==D._snap){ e.preventDefault(); showUnsaved(); return; } e.preventDefault(); closeDrawer(); if (a.tagName==="A") nav(a.getAttribute("href")); }
   else if (act==="keepediting") $("#unsaved")?.remove();
   else if (act==="saveclose"){ $("#unsaved")?.remove(); if (await onSave() && D) closeDrawer(); }
   else if (act==="save") onSave();
@@ -876,7 +882,7 @@ document.addEventListener("click", async e => {
     const name=$("#sName").value.trim() || (sheetIdFromUrl(url)?"Google Sheet "+(D.sheets.length+1):url.replace(/^https?:\/\//,"").slice(0,40));
     D.sheets.push({name,url}); if(D.id) logAct(D,`attached sheet “${name}”`); drawDrawer(); }
   else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig=origOf(D); drawDrawer(); D._snap=draftKey(); }catch{} }
-  else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; location.hash="sheets"; }
+  else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; nav("/sheets"); }
   else if (act==="merge") doMerge();
   else if (act==="gconnect"){ try { await window.TaskdeskGoogle.signIn(); toast("Google connected"); } catch(err){ toast(err.message); } render(); }
   else if (act==="create") createSheet();
