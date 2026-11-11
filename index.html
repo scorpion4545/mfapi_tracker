@@ -1,7 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <script src="backend.js"></script>
+<script src="google.js"></script>
 </head><body>
 <title>Team Taskdesk</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -442,7 +444,8 @@ function allSheets(){
 }
 function viewSheets(){
   const sh = allSheets(); const M = S.merge;
-  const driveNote = S.mcp ? "" : `<div class="note">${(S.local||S.backend) ? "Running as a website, so Google Drive isn't connected and linked sheets can't be read." : "Google Drive isn't available in this view, so linked sheets can't be read here."} You can still upload CSV or Excel files below and merge them.</div>`;
+  const G = window.TaskdeskGoogle;
+  const driveNote = S.mcp ? "" : G ? `<div class="note row" style="justify-content:space-between">${G.isSignedIn() ? "<span><b>Google connected.</b> Linked sheets can be read and merged.</span>" : "<span>Connect your Google account to read linked sheets and create the merged sheet in your Drive.</span>"}<button class="btn sm ${G.isSignedIn()?"":"pri"}" data-act="gconnect">${G.isSignedIn()?"Reconnect":"Connect Google"}</button></div>` : `<div class="note">${(S.local||S.backend) ? "Running as a website, so Google Drive isn't connected and linked sheets can't be read." : "Google Drive isn't available in this view, so linked sheets can't be read here."} You can still upload CSV or Excel files below and merge them.</div>`;
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="hero"><div><h1>Sheets hub</h1><div class="sub">Pick any sheets attached to tasks, add uploads, and combine them into one Google Sheet.</div></div></div>
     ${driveNote}
@@ -451,7 +454,8 @@ function viewSheets(){
         <div class="srcs">${sh.length ? sh.map(s => { const fid = sheetIdFromUrl(s.url); return `<label class="src"><input type="checkbox" data-sel="${s.key}" ${M.sel.has(s.key)?"checked":""} ${fid&&!s.task.id.startsWith("e")?"":"disabled"}><span class="sicon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg></span><div style="min-width:0"><div class="nm">${esc(s.name)}</div><div class="from">${esc(s.task.title)}${fid?"":" · not a Google Sheets link"}</div></div>${s.url&&s.url!=="#"?`<a class="btn sm ghost" href="${esc(s.url)}" target="_blank" rel="noopener">Open</a>`:"<span></span>"}</label>`; }).join("") : `<div class="muted">No sheets attached yet. Open a task and add Google Sheets links under “Attached sheets”.</div>`}
         ${M.uploads.map((u,i)=>`<div class="src"><input type="checkbox" checked disabled><span class="sicon">⇪</span><div style="min-width:0"><div class="nm">${esc(u.name)}</div><div class="from">Uploaded file · ${u.tables.reduce((a,t)=>a+t.rows.length,0)} rows</div></div><button class="btn sm ghost danger" data-rmup="${i}">Remove</button></div>`).join("")}</div>
         <div class="row"><label class="btn sm" for="upl">Upload CSV / Excel</label><input id="upl" type="file" accept=".csv,.tsv,.txt,.xlsx,.xls" multiple hidden>
-          <label class="row muted" style="font-size:13px;gap:6px"><input type="checkbox" id="dedupe" ${M.dedupe?"checked":""}>Remove duplicate rows</label></div>
+          <label class="row muted" style="font-size:13px;gap:6px"><input type="checkbox" id="dedupe" ${M.dedupe?"checked":""}>Remove duplicate rows</label>
+          ${window.TaskdeskGoogle?`<label class="row muted" style="font-size:13px;gap:6px"><input type="checkbox" id="allTabs" ${M.allTabs?"checked":""}>Include every tab (not just the first)</label>`:""}</div>
         <button class="btn pri" data-act="merge" ${(M.sel.size+M.uploads.length)<1||M.busy?"disabled":""}>${M.busy?"Reading sheets…":"Merge into one sheet"}</button>
         ${M.msg?`<div class="note ${M.msg.kind}">${M.msg.html}</div>`:""}
       </section>
@@ -459,7 +463,7 @@ function viewSheets(){
         ${M.result ? `<div class="muted">${M.result.rows.length} rows × ${M.result.cols.length} columns from ${M.result.sources} sources${M.result.dropped?` · ${M.result.dropped} duplicates removed`:""}. A “Source” column records where each row came from.</div>
           <label class="fl">New sheet name<input id="mTitle" value="${esc(M.result.title)}"></label>
           <label class="fl">Attach it to a task (optional)<select id="mTask"><option value="">Don't attach</option>${S.tasks.map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join("")}</select></label>
-          <div class="row"><button class="btn pri" data-act="create" ${S.mcp?"":"disabled"}>Create Google Sheet</button><button class="btn" data-act="csv" ${S.dl?"":"disabled"}>Save as CSV</button><button class="btn ghost" data-act="copy">Copy as CSV</button></div>
+          <div class="row"><button class="btn pri" data-act="create" ${(S.mcp||window.TaskdeskGoogle)?"":"disabled"}>Create Google Sheet</button><button class="btn" data-act="csv" ${S.dl?"":"disabled"}>Save as CSV</button><button class="btn ghost" data-act="copy">Copy as CSV</button></div>
           ${M.created?`<div class="note ok">${M.created}</div>`:""}`
         : `<div class="muted">Columns with the same header are lined up across sheets. Columns that only exist in one sheet are kept and left blank for the others.</div><div class="empty">The merged preview appears here.</div>`}
       </section>
@@ -544,6 +548,15 @@ async function doMerge(){
   const sources=[]; const errs=[];
   for (const s of sel){
     const fileId = sheetIdFromUrl(s.url);
+    if (!S.mcp && window.TaskdeskGoogle){
+      try {
+        const r = await window.TaskdeskGoogle.readSheet(fileId);
+        const tabs = M.allTabs ? r.tables : r.tables.slice(0,1);
+        if (!tabs.length) errs.push(`${esc(s.name)}: the sheet has no rows.`);
+        else tabs.forEach(t => sources.push({label: tabs.length>1 ? `${s.name} · ${t.tab}` : s.name, tables:[t]}));
+      } catch(e){ errs.push(`${esc(s.name)}: ${esc(e.message)}`); if (/closed|blocked|not allowed|didn't load|Allow both/.test(e.message)) break; }
+      continue;
+    }
     if (!S.mcp){ errs.push(`${esc(s.name)}: Google Drive isn't connected here. Download it as CSV or Excel and upload it instead.`); continue; }
     try {
       const res = await S.mcp.callTool("Google Drive","read_file_content",{fileId});
@@ -564,6 +577,14 @@ async function createSheet(){
   const M=S.merge; const title = ($("#mTitle")?.value||M.result.title).replace(/[\r\n\t]/g," ").trim()||"Merged sheet";
   const taskId = $("#mTask")?.value||"";
   const btn = document.querySelector('[data-act="create"]'); if(btn){btn.disabled=true;btn.textContent="Creating…";}
+  if (!S.mcp && window.TaskdeskGoogle){
+    try {
+      const {url} = await window.TaskdeskGoogle.createSheet(title, M.result.cols, M.result.rows);
+      M.created = `Created <a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)}</a> in your Google Drive.`;
+      if (taskId){ const t=S.tasks.find(x=>x.id===taskId); if(t){ const nt={...t, sheets:[...(t.sheets||[]),{name:title,url}]}; logAct(nt,`attached merged sheet “${title}”`); await saveTask(nt); M.created+=" Attached to the task."; } }
+    } catch(e){ M.created=null; M.msg={kind:"err",html:esc(e.message)}; }
+    render(); return;
+  }
   try {
     const res = await S.mcp.callTool("Google Drive","create_file",{title, textContent:toCSV(M.result), contentMimeType:"text/csv"});
     const p = res.payload||{};
@@ -693,6 +714,7 @@ function bind(v){
     render();
   });
   const dd = $("#dedupe"); if (dd) dd.addEventListener("change", e => { S.merge.dedupe = e.target.checked; });
+  const at = $("#allTabs"); if (at) at.addEventListener("change", e => { S.merge.allTabs = e.target.checked; });
   view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
 }
 document.addEventListener("click", async e => {
@@ -715,6 +737,7 @@ document.addEventListener("click", async e => {
   else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig={status:t.status,progress:t.progress}; drawDrawer(); }catch{} }
   else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; location.hash="sheets"; }
   else if (act==="merge") doMerge();
+  else if (act==="gconnect"){ try { await window.TaskdeskGoogle.signIn(); toast("Google connected"); } catch(err){ toast(err.message); } render(); }
   else if (act==="create") createSheet();
   else if (act==="csv"){ const title=($("#mTitle")?.value||"merged").replace(/[^\w\- ]+/g,"").trim()||"merged"; try{ await S.dl.save({filename:title+".csv", data:new Blob([toCSV(S.merge.result)],{type:"text/csv"})}); }catch(err){ if(err?.code!=="cancelled"&&err?.code!=="declined") toast("The file wasn't saved."); } }
   else if (act==="copy"){ const csv=toCSV(S.merge.result); try{ await navigator.clipboard.writeText(csv); toast("Copied. Paste into any sheet."); }catch{ toast("Copy isn't allowed here. Use Save as CSV."); } }
