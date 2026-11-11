@@ -259,7 +259,7 @@ function exTasks(){
     {id:"e5",title:"Weekly data quality audit",status:"done",priority:"medium",assignees:["ex3","ex1"],due:d(-3),progress:100,sheets:[{name:"DQ log",url:"#"}],createdAt:now-1.2e9,updatedAt:now-3e8,completedAt:now-3e8},
   ];
 }
-const showingExample = () => S.loaded && S.tasks.length===0;
+const showingExample = () => S.loaded && S.tasks.length===0 && !S.backend && !S.local;
 const tasksView = () => showingExample() ? exTasks() : S.tasks;
 const teamView = () => (showingExample() && S.team.length===0) ? EX_TEAM : S.team;
 
@@ -305,6 +305,8 @@ function render(){
 }
 
 function exampleBanner(){
+  if (S.loaded && S.tasks.length===0 && (S.backend || S.local))
+    return `<div class="example"><span><b>No tasks yet.</b> Add your team on the Team page, then create your first task.</span><button class="btn sm pri" data-act="new">Create first task</button></div>`;
   return showingExample() ? `<div class="example"><span><b>Example tasks.</b> Nothing here is saved. They disappear when you add your first real task.</span><button class="btn sm pri" data-act="new">Create first task</button></div>` : "";
 }
 
