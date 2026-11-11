@@ -1,0 +1,7 @@
+# Never upload the database password or setup tooling to the website
+.env
+.env.*
+*.py
+__pycache__
+schema.sql
+README.md
