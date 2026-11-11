@@ -1,11 +1,11 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%231c7fbd'/%3E%3Cpath d='M5 17V9l3.5 4.5L12 7l3.5 5L19 7v10' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="backend.js"></script>
 <script src="google.js"></script>
 </head><body>
-<title>Team Taskdesk</title>
+<title>mfapi Taskdesk</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -38,12 +38,13 @@ body{background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -
 *{box-sizing:border-box}
 button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.app{display:grid;grid-template-columns:232px minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1440px;margin:0 auto}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
 .glass{background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 /* sidebar */
 .side{position:sticky;top:calc(16px + env(safe-area-inset-top,0px));align-self:start;padding:16px 12px;display:flex;flex-direction:column;gap:18px;min-height:calc(100vh - 32px)}
 .brand{display:flex;gap:10px;align-items:center;padding:0 6px}
-.logo{width:34px;height:34px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:700}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.brand b{letter-spacing:-.01em;font-size:17px}.brand b span{color:var(--accent)}
 .brand b{font-family:var(--f-display);font-size:15px;display:block}
 .brand small{color:var(--muted);font-size:12px}
 .navlabel{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0 10px;margin-bottom:4px}
@@ -172,6 +173,23 @@ td.srccol{color:var(--accent);font-weight:500}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
 .stats b{font-family:var(--f-display);font-size:18px;display:block;font-variant-numeric:tabular-nums}
 .stats span{font-size:11px;color:var(--muted)}
+.topbrand{display:none}
+/* full-screen task page */
+.drawer{left:0;width:100%;border-left:0;background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%)}
+.drawer-h{flex-wrap:wrap;gap:10px}
+.tp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;width:100%;max-width:1500px;margin:0 auto;align-items:start}
+.tp>section{padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+label.fl.tp-title input{font-family:var(--f-display);font-size:20px;font-weight:600}
+.sheetbox{display:flex;flex-direction:column;gap:6px}
+.prev{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.prev iframe{display:block;width:100%;height:400px;border:0;background:#fff}
+.pager{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:13px}
+.pager .pg{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.pager .btn.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+tr[data-open]{cursor:pointer}
+tr[data-open]:hover{background:var(--accent-soft)}
+@media (max-width:980px){.tp{grid-template-columns:1fr}}
+@media (max-width:820px){.topbrand{display:grid}}
 .mobnav{display:none}
 @media (max-width:1100px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}}
 @media (max-width:820px){
@@ -190,7 +208,7 @@ td.srccol{color:var(--accent);font-weight:500}
 
 <div class="app">
   <aside class="side glass">
-    <div class="brand"><div class="logo">T</div><div><b>Taskdesk</b><small>Team workspace</small></div></div>
+    <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V9l4 5 4-8 4 6 4-7v13"/></svg></div><div><b>mf<span>api</span></b><small>Taskdesk</small></div></div>
     <div>
       <div class="navlabel">Workspace</div>
       <nav class="nav" id="nav"></nav>
@@ -199,7 +217,7 @@ td.srccol{color:var(--accent);font-weight:500}
   </aside>
 
   <main>
-    <div class="top glass">
+    <div class="top glass"><div class="logo topbrand"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V9l4 5 4-8 4 6 4-7v13"/></svg></div>
       <div class="search">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="q" placeholder="Search tasks, people, sheets…" autocomplete="off">
@@ -229,7 +247,7 @@ const PALETTE = ["#1c7fbd","#6c5ccf","#1f9d6b","#c9542e","#b0428a","#2e8f9a","#8
 const S = {
   tasks: [], team: [], loaded: false, live: false, stale: false,
   db: null, user: null, mcp: null, dl: null, meId: null, meName: "",
-  q: "", fBy: "", fPri: "",
+  q: "", fBy: "", fPri: "", fStatus: "", pages: {tasks:1, preview:1}, lastView: "overview",
   merge: {sel: new Set(), uploads: [], result: null, busy: false, msg: null, created: null, dedupe: true},
 };
 
@@ -269,23 +287,52 @@ const teamView = () => (showingExample() && S.team.length===0) ? EX_TEAM : S.tea
 const VIEWS = [
   {k:"overview", label:"Overview", icon:'<path d="M3 13h8V3H3zM13 21h8v-8h-8zM3 21h8v-6H3zM13 11h8V3h-8z"/>'},
   {k:"board", label:"Task board", icon:'<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>'},
+  {k:"tasks", label:"All tasks", icon:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'},
   {k:"team", label:"Team", icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17.5 14.5c2 .4 3.4 2 4 4.5"/>'},
   {k:"sheets", label:"Sheets hub", icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>'},
 ];
-const cur = () => { const h = location.hash.slice(1); return VIEWS.some(v=>v.k===h) ? h : "overview"; };
+const hashTask = () => { const h = location.hash.slice(1); return h.startsWith("task-") ? h.slice(5) : null; };
+const cur = () => { const h = location.hash.slice(1); if (VIEWS.some(v=>v.k===h)) S.lastView = h; return S.lastView; };
+function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } location.hash = "task-"+id; }
+function syncTaskRoute(){
+  const tid = hashTask();
+  if (tid){
+    if ((D && D.id===tid) || !S.loaded) return;
+    if (S.tasks.some(t=>t.id===tid)) openTask(tid);
+    else { toast("That task doesn't exist or was deleted."); location.hash = S.lastView; }
+  } else if (D && D.id){ $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; }
+}
+const taskLink = id => location.href.split("#")[0] + "#task-" + id;
+async function shareTask(id){
+  const url = taskLink(id);
+  try { await navigator.clipboard.writeText(url); toast("Link copied. Anyone on the team list can open it."); }
+  catch {
+    const d = document.createElement("div"); d.className = "toast"; d.style.cssText = "display:flex;gap:8px;align-items:center;z-index:70";
+    d.innerHTML = `<input readonly aria-label="Task link" style="width:min(60vw,380px);background:transparent;border:0;color:inherit" value="${esc(url)}"><button class="btn sm">Close</button>`;
+    document.body.appendChild(d); d.querySelector("input").select(); d.querySelector("button").onclick = () => d.remove();
+  }
+}
+function pager(key, total, size){
+  const pages = Math.max(1, Math.ceil(total/size)); const p = Math.min(Math.max(1, S.pages[key]||1), pages); S.pages[key] = p;
+  const from = total ? (p-1)*size+1 : 0, to = Math.min(total, p*size);
+  const nums = []; for (let i=1;i<=pages;i++){ if (i===1||i===pages||Math.abs(i-p)<=1) nums.push(i); else if (nums[nums.length-1]!=="…") nums.push("…"); }
+  const html = `<div class="pager"><span class="muted">Showing ${from}–${to} of ${total}</span><div class="pg"><button class="btn sm" data-page="${key}:${p-1}" ${p<=1?"disabled":""}>Previous</button>${nums.map(n=>n==="…"?`<span class="muted" style="padding:0 4px">…</span>`:`<button class="btn sm ${n===p?"on":""}" data-page="${key}:${n}" ${n===p?'aria-current="page"':""}>${n}</button>`).join("")}<button class="btn sm" data-page="${key}:${p+1}" ${p>=pages?"disabled":""}>Next</button></div></div>`;
+  return {start:(p-1)*size, end:p*size, html};
+}
 function renderNav(){
-  const counts = {board: tasksView().filter(t=>t.status!=="done").length, team: teamView().length, sheets: allSheets().length};
+  const counts = {board: tasksView().filter(t=>t.status!=="done").length, tasks: tasksView().length, team: teamView().length, sheets: allSheets().length};
   const v = cur();
   $("#nav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${x.icon}</svg>${x.label}${counts[x.k]!=null?`<span class="ct">${counts[x.k]}</span>`:""}</a>`).join("");
   $("#mobnav").innerHTML = VIEWS.map(x => `<a href="#${x.k}" class="${x.k===v?"on":""}">${x.label}</a>`).join("");
 }
 window.addEventListener("hashchange", render);
-$("#q").addEventListener("input", e => { S.q = e.target.value.toLowerCase(); render(); });
+$("#q").addEventListener("input", e => { S.q = e.target.value.toLowerCase(); S.pages.tasks = 1; render(); });
 
 function filtered(){
   return tasksView().filter(t => {
     if (S.fBy && !(t.assignees||[]).includes(S.fBy)) return false;
     if (S.fPri && t.priority!==S.fPri) return false;
+    if (S.fStatus && S.lastView==="tasks" && t.status!==S.fStatus) return false;
     if (!S.q) return true;
     const hay = [t.title, t.description, ...(t.assignees||[]).map(a=>member(a)?.name||(EX_TEAM.find(e=>e.id===a)||{}).name), ...(t.sheets||[]).map(s=>s.name)].join(" ").toLowerCase();
     return hay.includes(S.q);
@@ -298,10 +345,12 @@ function render(){
   const v = cur();
   const el = $("#view");
   if (v==="board") el.innerHTML = viewBoard();
+  else if (v==="tasks") el.innerHTML = viewTasks();
   else if (v==="team") el.innerHTML = viewTeam();
   else if (v==="sheets") el.innerHTML = viewSheets();
   else el.innerHTML = viewOverview();
   bind(v);
+  syncTaskRoute();
   $("#syncState").innerHTML = !S.db ? (S.loaded ? "Saving is off in this view. Open the page on claude.ai while signed in to save tasks." : "Connecting…")
     : S.local ? "Local mode · saved in this browser only" : (S.backend && S.stale) ? "Can't reach Supabase right now. Changes may not be saving." : S.backend ? `<span style="color:var(--ok)">●</span> Live · shared via Supabase` : S.stale ? "Can't reach saved data yet. Showing what loaded so far." : (S.live ?`<span style="color:var(--ok)">●</span> Live · shared with your team` : "Loading tasks…");
 }
@@ -402,10 +451,10 @@ function donut(ts){
   <div class="legend" style="flex:1;min-width:140px">${STATUSES.map(s=>`<span><i class="dot" style="background:${s.c}"></i>${s.label}</span><b style="font-variant-numeric:tabular-nums">${ts.filter(t=>t.status===s.k).length}</b>`).join("")}</div></div>`;
 }
 
-function filterBar(){
+function filterBar(withStatus){
   const tm = teamView();
   return `<div class="filters"><select class="f" id="fBy" aria-label="Filter by person"><option value="">Everyone</option>${tm.map(m=>`<option value="${m.id}" ${S.fBy===m.id?"selected":""}>${esc(m.name)}</option>`).join("")}</select>
-  <select class="f" id="fPri" aria-label="Filter by priority"><option value="">Any priority</option>${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${S.fPri===k?"selected":""}>${v}</option>`).join("")}</select></div>`;
+  <select class="f" id="fPri" aria-label="Filter by priority"><option value="">Any priority</option>${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${S.fPri===k?"selected":""}>${v}</option>`).join("")}</select>${withStatus?`<select class="f" id="fStatus" aria-label="Filter by status"><option value="">Any status</option>${STATUSES.map(s=>`<option value="${s.k}" ${S.fStatus===s.k?"selected":""}>${s.label}</option>`).join("")}</select>`:""}</div>`;
 }
 function viewBoard(){
   const ts = filtered();
@@ -425,6 +474,15 @@ function card(t){
     <span class="row" style="gap:10px">${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
 }
 
+function viewTasks(){
+  const ts = filtered().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
+  const pg = pager("tasks", ts.length, 10);
+  const rows = ts.slice(pg.start, pg.end);
+  return `<div style="display:flex;flex-direction:column;gap:16px">
+    <div class="hero"><div><h1>All tasks</h1><div class="sub">Every task in one list, 10 per page. Click a row to open it.</div></div><div class="row">${filterBar(true)}<button class="btn pri" data-act="new">+ New task</button></div></div>
+    ${exampleBanner()}
+    <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr><th>Task</th><th>Status</th><th>Priority</th><th>Working on it</th><th>Deadline</th><th>Progress</th><th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>${pg.html}` : `<div class="empty">No tasks match.</div>`}</section></div>`;
+}
 function viewTeam(){
   const tm = teamView(); const ts = tasksView();
   return `<div style="display:flex;flex-direction:column;gap:16px">
@@ -444,6 +502,7 @@ function allSheets(){
 }
 function viewSheets(){
   const sh = allSheets(); const M = S.merge;
+  const pv = M.result ? pager("preview", M.result.rows.length, 25) : null;
   const G = window.TaskdeskGoogle;
   const driveNote = S.mcp ? "" : G ? `<div class="note row" style="justify-content:space-between">${G.isSignedIn() ? "<span><b>Google connected.</b> Linked sheets can be read and merged.</span>" : "<span>Connect your Google account to read linked sheets and create the merged sheet in your Drive.</span>"}<button class="btn sm ${G.isSignedIn()?"":"pri"}" data-act="gconnect">${G.isSignedIn()?"Reconnect":"Connect Google"}</button></div>` : `<div class="note">${(S.local||S.backend) ? "Running as a website, so Google Drive isn't connected and linked sheets can't be read." : "Google Drive isn't available in this view, so linked sheets can't be read here."} You can still upload CSV or Excel files below and merge them.</div>`;
   return `<div style="display:flex;flex-direction:column;gap:16px">
@@ -468,8 +527,8 @@ function viewSheets(){
         : `<div class="muted">Columns with the same header are lined up across sheets. Columns that only exist in one sheet are kept and left blank for the others.</div><div class="empty">The merged preview appears here.</div>`}
       </section>
     </div>
-    ${M.result ? `<section class="panel glass"><div class="panel-h"><h2>Preview</h2><span class="muted" style="font-size:12px">First ${Math.min(100,M.result.rows.length)} rows</span></div>
-      <div class="tbl"><table><thead><tr>${M.result.cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${M.result.rows.slice(0,100).map(r=>`<tr>${r.map((v,i)=>`<td class="${i===0?"srccol":""}" title="${esc(v)}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`:""}
+    ${M.result ? `<section class="panel glass"><div class="panel-h"><h2>Preview</h2><span class="muted" style="font-size:12px">25 rows per page</span></div>
+      <div class="tbl"><table><thead><tr>${M.result.cols.map(c=>`<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${M.result.rows.slice(pv.start,pv.end).map(r=>`<tr>${r.map((v,i)=>`<td class="${i===0?"srccol":""}" title="${esc(v)}">${esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>${pv.html}</section>`:""}
   </div>`;
 }
 
@@ -543,7 +602,7 @@ function mcpErr(e, what){
 }
 
 async function doMerge(){
-  const M=S.merge; M.busy=true; M.msg=null; M.created=null; render();
+  const M=S.merge; M.busy=true; M.msg=null; M.created=null; S.pages.preview=1; render();
   const sel = allSheets().filter(s=>M.sel.has(s.key));
   const sources=[]; const errs=[];
   for (const s of sel){
@@ -605,36 +664,49 @@ function openTask(id){
   D._orig = t ? {status:t.status, progress:t.progress} : null;
   drawDrawer();
 }
+function sheetPreview(s){
+  const id = sheetIdFromUrl(s.url);
+  if (!id) return `<div class="muted" style="font-size:12px">No preview for this link. Previews work for Google Sheets links.</div>`;
+  if (window.claude) return "";
+  const gid = (String(s.url).match(/[#&?]gid=(\d+)/)||[])[1];
+  return `<div class="prev"><iframe loading="lazy" title="Preview of ${esc(s.name)}" src="https://docs.google.com/spreadsheets/d/${id}/preview${gid?`?gid=${gid}#gid=${gid}`:""}"></iframe></div>`;
+}
 function drawDrawer(){
   const isNew = !D.id;
-  $("#overlay").innerHTML = `<div class="scrim" data-act="close"></div><div class="drawer" role="dialog" aria-modal="true" aria-label="${isNew?"New task":"Task details"}">
-    <div class="drawer-h"><h2>${isNew?"New task":"Task details"}</h2><button class="btn sm ghost" data-act="close" aria-label="Close">✕</button></div>
-    <div class="drawer-b">
-      <label class="fl">Task<input id="dTitle" value="${esc(D.title)}" placeholder="What needs to be done?"></label>
-      <label class="fl">Details<textarea id="dDesc" rows="3" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
-      <div class="three">
-        <label class="fl">Status<select id="dStatus">${STATUSES.map(s=>`<option value="${s.k}" ${D.status===s.k?"selected":""}>${s.label}</option>`).join("")}</select></label>
-        <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
-        <label class="fl">Deadline<input id="dDue" type="date" value="${esc(D.due)}"></label>
-      </div>
-      <label class="fl">Progress · <span id="dProgV">${D.progress||0}%</span><input id="dProg" type="range" min="0" max="100" step="5" value="${D.progress||0}"></label>
-      <div class="fl">Working on it
-        <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="#team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
-      <div class="fl">Attached sheets
-        <div style="display:flex;flex-direction:column;gap:6px;text-transform:none;letter-spacing:0;font-weight:400">
-          ${D.sheets.map((s,i)=>`<div class="sheet"><span class="sicon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg></span><div style="min-width:0"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a><small>${sheetIdFromUrl(s.url)?"Google Sheet":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>`).join("") || `<span class="muted">No sheets yet.</span>`}
-          <div class="row"><input class="f" id="sName" placeholder="Sheet name" style="flex:1;min-width:120px"><input class="f" id="sUrl" placeholder="Paste Google Sheets link" style="flex:2;min-width:180px"><button class="btn sm" type="button" data-act="addsheet">Attach</button></div>
-          ${D.sheets.filter(s=>sheetIdFromUrl(s.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis">Merge this task's sheets into one</button>`:""}
-        </div></div>
-      ${isNew ? "" : `<div class="fl">Notes & activity
-        <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
-          <div class="row"><input class="f" id="nText" placeholder="Add an update for the team" style="flex:1"><button class="btn sm" type="button" data-act="note">Post</button></div>
-          <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
-    </div>
-    <div class="drawer-f">${isNew?"<span></span>":`<button class="btn ghost danger" data-act="del">Delete task</button>`}<div class="row"><button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div></div>`;
+  const sheetIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>';
+  document.body.style.overflow = "hidden";
+  $("#overlay").innerHTML = `<div class="drawer" role="dialog" aria-modal="true" aria-label="${isNew?"New task":"Task details"}">
+    <div class="drawer-h"><div class="row"><button class="btn sm" data-act="close">← Back</button><h2>${isNew?"New task":"Task details"}</h2>${isNew?"":`<span class="pill st-${D.status}">${ST[D.status]?.label||""}</span><span class="pill pr-${D.priority}">${PRI[D.priority]||""}</span><span class="due ${dueCls(D)}">${fmtDue(D.due)}</span>`}</div>
+      <div class="row">${isNew?"":`<button class="btn sm" data-share="${D.id}">Share</button>`}<button class="btn sm pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div>
+    <div class="drawer-b"><div class="tp">
+      <section class="glass">
+        <label class="fl tp-title">Task<input id="dTitle" value="${esc(D.title)}" placeholder="What needs to be done?"></label>
+        <label class="fl">Details<textarea id="dDesc" rows="5" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
+        <div class="three">
+          <label class="fl">Status<select id="dStatus">${STATUSES.map(s=>`<option value="${s.k}" ${D.status===s.k?"selected":""}>${s.label}</option>`).join("")}</select></label>
+          <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
+          <label class="fl">Deadline<input id="dDue" type="date" value="${esc(D.due)}"></label>
+        </div>
+        <label class="fl"><span>Progress · <span id="dProgV">${D.progress||0}%</span></span><input id="dProg" type="range" min="0" max="100" step="5" value="${D.progress||0}"></label>
+        <div class="fl">Working on it
+          <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="#team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
+        ${isNew ? "" : `<div class="fl">Notes & activity
+          <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
+            <div class="row"><input class="f" id="nText" placeholder="Add an update for the team" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="note">Post</button></div>
+            <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
+      </section>
+      <section class="glass">
+        <div class="panel-h"><h2>Attached sheets</h2><span class="muted" style="font-size:12px">${D.sheets.length} attached</span></div>
+        <div class="row"><input class="f" id="sName" placeholder="Sheet name" style="flex:1;min-width:120px"><input class="f" id="sUrl" placeholder="Paste Google Sheets link" style="flex:2;min-width:180px"><button class="btn sm" type="button" data-act="addsheet">Attach</button></div>
+        ${D.sheets.filter(s=>sheetIdFromUrl(s.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis" style="align-self:flex-start">Merge this task's sheets into one</button>`:""}
+        ${D.sheets.map((s,i)=>`<div class="sheetbox"><div class="sheet"><span class="sicon">${sheetIcon}</span><div style="min-width:0"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a><small>${sheetIdFromUrl(s.url)?"Google Sheet · opens in a new tab":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>${sheetPreview(s)}</div>`).join("") || `<div class="empty">No sheets yet. Paste a Google Sheets link above to attach one and see its preview here.</div>`}
+        ${D.sheets.some(s=>sheetIdFromUrl(s.url)) && !window.claude ? `<div class="muted" style="font-size:12px">A preview shows only if the Google account in this browser can open that sheet.</div>`:""}
+      </section>
+    </div></div>
+    <div class="drawer-f">${isNew?"<span></span>":`<button class="btn ghost danger" data-act="del">Delete task</button>`}<div class="row"><button class="btn" data-act="close">${isNew?"Cancel":"Close"}</button><button class="btn pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div></div>`;
   const ov = $("#overlay");
   ov.querySelector("#dProg").addEventListener("input", e => ov.querySelector("#dProgV").textContent = e.target.value+"%");
-  ov.querySelector("#dTitle").focus();
+  if (isNew) ov.querySelector("#dTitle").focus();
 }
 function readDrawer(){
   const ov=$("#overlay");
@@ -650,7 +722,7 @@ function logAct(t, text, type="event"){
   if (S.backend) e.byName = S.meName; // website mode: no profile service, so keep the author's name
   t.activity = [...(t.activity||[]), e].slice(-40);
 }
-function closeDrawer(){ $("#overlay").innerHTML=""; D=null; }
+function closeDrawer(){ $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) location.hash = S.lastView; else render(); }
 
 let writing = Promise.resolve();
 function saveTask(t){
@@ -672,14 +744,14 @@ async function onSave(){
   }
   if (D.status==="done" && !D.completedAt){ D.completedAt=Date.now(); D.progress=100; }
   if (D.status!=="done") delete D.completedAt;
-  const t = D; closeDrawer();
-  try { await saveTask(t); toast(isNew?"Task created":"Saved"); } catch {}
+  if (isNew){ const t = D; closeDrawer(); try { await saveTask(t); toast("Task created"); } catch {} return; }
+  try { await saveTask({...D}); if (D){ D._orig = {status:D.status, progress:D.progress}; drawDrawer(); } toast("Saved"); } catch {}
 }
 
 /* ---------- events ---------- */
 function bind(v){
   const view = $("#view");
-  view.querySelectorAll("#fBy,#fPri").forEach(s => s.addEventListener("change", e => { S[e.target.id] = e.target.value; render(); }));
+  view.querySelectorAll("#fBy,#fPri,#fStatus").forEach(s => s.addEventListener("change", e => { S[e.target.id] = e.target.value; S.pages.tasks = 1; render(); }));
   if (v==="board"){
     view.querySelectorAll("[data-drag]").forEach(c => c.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", c.dataset.drag)));
     view.querySelectorAll("[data-col]").forEach(col => {
@@ -718,9 +790,11 @@ function bind(v){
   view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
 }
 document.addEventListener("click", async e => {
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page]");
   if (!a) return;
-  if (a.dataset.open && !e.target.closest("a[target]")) { e.preventDefault(); openTask(a.dataset.open); return; }
+  if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
+  if (a.dataset.page){ const [k,n] = a.dataset.page.split(":"); S.pages[k] = +n; render(); return; }
+  if (a.dataset.open && !e.target.closest("a[target]")) { e.preventDefault(); goTask(a.dataset.open); return; }
   if (a.dataset.pick){ const id=a.dataset.pick; D.assignees = D.assignees.includes(id) ? D.assignees.filter(x=>x!==id) : [...D.assignees,id]; a.classList.toggle("on"); a.setAttribute("aria-pressed", D.assignees.includes(id)); return; }
   if (a.dataset.rmsheet){ readDrawer(); const s=D.sheets.splice(+a.dataset.rmsheet,1)[0]; if(D.id) logAct(D,`removed sheet “${s.name}”`); drawDrawer(); return; }
   if (a.dataset.rmup){ S.merge.uploads.splice(+a.dataset.rmup,1); render(); return; }

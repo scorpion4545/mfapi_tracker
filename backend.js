@@ -67,7 +67,7 @@
       wrap.style.cssText = "display:grid;place-items:center;background:var(--bg);z-index:60;padding:16px";
       wrap.innerHTML = `
         <form class="glass" id="loginForm" style="width:min(380px,100%);padding:24px;display:flex;flex-direction:column;gap:14px;background:var(--glass2)">
-          <div class="brand" style="padding:0"><div class="logo">T</div><div><b>Taskdesk</b><small>Sign in to your team workspace</small></div></div>
+          <div class="brand" style="padding:0"><div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V9l4 5 4-8 4 6 4-7v13"/></svg></div><div><b>mf<span>api</span></b><small>Sign in to Taskdesk</small></div></div>
           <label class="fl">Email<input id="lEmail" type="email" required autocomplete="email"></label>
           <label class="fl">Password<input id="lPass" type="password" required minlength="6" autocomplete="current-password"></label>
           <div id="lMsg" class="note" hidden></div>
