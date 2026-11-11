@@ -6,5 +6,5 @@ window.TASKDESK_CONFIG = {
   supabaseAnonKey: "sb_publishable_GsJ6ESv9o3xbOJJnljmcPQ_g-xEyawO",
   // Google OAuth Client ID (Web application) for reading and creating Google Sheets.
   // Ends with ".apps.googleusercontent.com". It's not a secret. Leave empty to turn the feature off.
-  googleClientId: "",
+  googleClientId: "528320996313-dqbm7q3tqkp3d2udj2lq7i72gj0b656t.apps.googleusercontent.com",
 };
