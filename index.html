@@ -173,11 +173,20 @@ td.srccol{color:var(--accent);font-weight:500}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
 .stats b{font-family:var(--f-display);font-size:18px;display:block;font-variant-numeric:tabular-nums}
 .stats span{font-size:11px;color:var(--muted)}
+#dDesc{overflow:hidden;resize:none;line-height:1.55;min-height:160px}
+.checks{display:flex;flex-direction:column;gap:2px;text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;color:var(--fg)}
+.chk{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:4px 6px;border-radius:8px}
+.chk:hover{background:var(--accent-soft)}
+.chk input{width:16px;height:16px;accent-color:var(--accent)}
+.chk .dn{text-decoration:line-through;color:var(--muted)}
+th[data-sort]{cursor:pointer;user-select:none}
+th[data-sort]:hover{color:var(--accent)}
+.confirmbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--glass2);border:1px solid var(--accent);padding:10px 14px;border-radius:12px;box-shadow:var(--shadow);z-index:70;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
 .topbrand{display:none}
 /* full-screen task page */
 .drawer{left:0;width:100%;border-left:0;background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%)}
 .drawer-h{flex-wrap:wrap;gap:10px}
-.tp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;width:100%;max-width:1500px;margin:0 auto;align-items:start}
+.tp{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;width:100%;max-width:1500px;margin:0 auto;align-items:start}
 .tp>section{padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
 label.fl.tp-title input{font-family:var(--f-display);font-size:20px;font-weight:600}
 .sheetbox{display:flex;flex-direction:column;gap:6px}
@@ -220,7 +229,7 @@ tr[data-open]:hover{background:var(--accent-soft)}
     <div class="top glass"><div class="logo topbrand"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" fill-opacity=".3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg></div>
       <div class="search">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="q" placeholder="Search tasks, people, sheets…" autocomplete="off">
+        <input id="q" placeholder="Search tasks, people, sheets…   press / to search" autocomplete="off">
       </div>
       <div class="me" id="me"></div>
     </div>
@@ -247,7 +256,7 @@ const PALETTE = ["#1c7fbd","#6c5ccf","#1f9d6b","#c9542e","#b0428a","#2e8f9a","#8
 const S = {
   tasks: [], team: [], loaded: false, live: false, stale: false,
   db: null, user: null, mcp: null, dl: null, meId: null, meName: "",
-  q: "", fBy: "", fPri: "", fStatus: "", pages: {tasks:1, preview:1}, lastView: "overview",
+  q: "", fBy: "", fPri: "", fStatus: "", pages: {tasks:1, preview:1}, lastView: "overview", sort: {k:"due", dir:1}, pageSize: 10,
   merge: {sel: new Set(), uploads: [], result: null, busy: false, msg: null, created: null, dedupe: true},
 };
 
@@ -351,6 +360,7 @@ function render(){
   else el.innerHTML = viewOverview();
   bind(v);
   syncTaskRoute();
+  if (!D){ document.title = "MfAPIs Taskdesk"; $("#unsaved")?.remove(); }
   $("#syncState").innerHTML = !S.db ? (S.loaded ? "Saving is off in this view. Open the page on claude.ai while signed in to save tasks." : "Connecting…")
     : S.local ? "Local mode · saved in this browser only" : (S.backend && S.stale) ? "Can't reach Supabase right now. Changes may not be saving." : S.backend ? `<span style="color:var(--ok)">●</span> Live · shared via Supabase` : S.stale ? "Can't reach saved data yet. Showing what loaded so far." : (S.live ?`<span style="color:var(--ok)">●</span> Live · shared with your team` : "Loading tasks…");
 }
@@ -462,7 +472,7 @@ function viewBoard(){
     <div class="hero"><div><h1>Task board</h1><div class="sub">Drag a card to change its status. Click it for details, sheets and notes.</div></div><div class="row">${filterBar()}<button class="btn pri" data-act="new">+ New task</button></div></div>
     ${exampleBanner()}
     <div class="board">${STATUSES.map(s=>{ const items = ts.filter(t=>t.status===s.k).sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
-      return `<div class="col glass" data-col="${s.k}"><div class="col-h"><span class="row"><i class="dot" style="background:${s.c}"></i><b>${s.label}</b></span><span class="muted" style="font-family:var(--f-mono);font-size:12px">${items.length}</span></div>
+      return `<div class="col glass" data-col="${s.k}"><div class="col-h"><span class="row"><i class="dot" style="background:${s.c}"></i><b>${s.label}</b></span><span class="row" style="gap:4px"><span class="muted" style="font-family:var(--f-mono);font-size:12px">${items.length}</span><button class="btn sm ghost" data-act="new" data-status="${s.k}" aria-label="Add a task to ${s.label}" title="Add a task here" style="padding:2px 8px">+</button></span></div>
       ${items.map(card).join("") || `<div class="muted" style="font-size:12px;padding:8px 4px">Nothing here.</div>`}</div>`; }).join("")}</div></div>`;
 }
 function card(t){
@@ -471,17 +481,24 @@ function card(t){
     <div class="t">${esc(t.title)}</div>
     <div class="bar" title="${t.progress||0}% complete"><i style="width:${t.progress||0}%"></i></div>
     <div class="meta"><div class="avs">${(t.assignees||[]).map(avatarAny).join("") || '<span>Unassigned</span>'}</div>
-    <span class="row" style="gap:10px">${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
+    <span class="row" style="gap:10px">${(t.checklist||[]).length?`<span class="chip" title="Checklist steps done">☑ ${t.checklist.filter(c=>c.done).length}/${t.checklist.length}</span>`:""}${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
 }
 
+function sortedTasks(){
+  const {k, dir} = S.sort; const pr = {high:0, medium:1, low:2}; const so = Object.fromEntries(STATUSES.map((x,i)=>[x.k,i]));
+  const val = t => k==="title" ? (t.title||"").toLowerCase() : k==="status" ? (so[t.status]??9) : k==="priority" ? (pr[t.priority]??9) : k==="progress" ? (t.progress||0) : (t.due||"9999");
+  return filtered().sort((a,b) => { const x = val(a), y = val(b); return (x<y?-1:x>y?1:0)*dir; });
+}
 function viewTasks(){
-  const ts = filtered().sort((a,b)=>(a.due||"9999").localeCompare(b.due||"9999"));
-  const pg = pager("tasks", ts.length, 10);
+  const ts = sortedTasks();
+  const pg = pager("tasks", ts.length, S.pageSize);
   const rows = ts.slice(pg.start, pg.end);
+  const th = (k,l) => `<th data-sort="${k}" title="Sort by ${l.toLowerCase()}" aria-sort="${S.sort.k===k?(S.sort.dir>0?"ascending":"descending"):"none"}">${l}${S.sort.k===k?(S.sort.dir>0?" ▲":" ▼"):""}</th>`;
   return `<div style="display:flex;flex-direction:column;gap:16px">
-    <div class="hero"><div><h1>All tasks</h1><div class="sub">Every task in one list, 10 per page. Click a row to open it.</div></div><div class="row">${filterBar(true)}<button class="btn pri" data-act="new">+ New task</button></div></div>
+    <div class="hero"><div><h1>All tasks</h1><div class="sub">Click a column heading to sort. Click a row to open the task.</div></div><div class="row">${filterBar(true)}${S.dl?`<button class="btn" data-act="exporttasks">Export CSV</button>`:""}<button class="btn pri" data-act="new">+ New task</button></div></div>
     ${exampleBanner()}
-    <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr><th>Task</th><th>Status</th><th>Priority</th><th>Working on it</th><th>Deadline</th><th>Progress</th><th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>${pg.html}` : `<div class="empty">No tasks match.</div>`}</section></div>`;
+    <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr>${th("title","Task")}${th("status","Status")}${th("priority","Priority")}<th>Working on it</th>${th("due","Deadline")}${th("progress","Progress")}<th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>
+      <div class="row" style="justify-content:space-between"><label class="row muted" style="font-size:13px;gap:6px">Rows per page<select class="f" id="pgSize" style="padding:4px 8px">${[10,25,50].map(n=>`<option ${S.pageSize===n?"selected":""}>${n}</option>`).join("")}</select></label><div style="flex:1;min-width:260px">${pg.html}</div></div>` : `<div class="empty">${S.tasks.length ? "No tasks match these filters." : "No tasks yet."}</div>`}</section></div>`;
 }
 function viewTeam(){
   const tm = teamView(); const ts = tasksView();
@@ -661,9 +678,21 @@ function openTask(id){
   if (showingExample() && id){ toast("This is an example task. Create a real one to edit it."); return; }
   const t = id ? S.tasks.find(x=>x.id===id) : null;
   D = t ? JSON.parse(JSON.stringify(t)) : {id:null,title:"",description:"",status:"todo",priority:"medium",assignees:[],due:"",progress:0,sheets:[],activity:[]};
-  D._orig = t ? {status:t.status, progress:t.progress} : null;
+  D.checklist ||= []; D.sheets ||= []; D.assignees ||= []; D.activity ||= [];
+  D._orig = t ? origOf(D) : null;
   drawDrawer();
+  D._snap = draftKey();
 }
+const origOf = t => ({status:t.status, progress:t.progress, due:t.due||"", priority:t.priority, assignees:(t.assignees||[]).join(",")});
+function draftKey(){ readDrawer(); return JSON.stringify([D.title, D.description, D.status, D.priority, D.due, D.progress, D.assignees, D.sheets, D.checklist]); }
+function syncProg(){ const c = D.checklist||[]; if (c.length) D.progress = Math.round(c.filter(x=>x.done).length/c.length*100); }
+function showUnsaved(){
+  if ($("#unsaved")) return;
+  const d = document.createElement("div"); d.id = "unsaved"; d.className = "confirmbar"; d.setAttribute("role","alertdialog");
+  d.innerHTML = `<span>You have unsaved changes.</span><button class="btn sm pri" data-act="saveclose">Save and close</button><button class="btn sm" data-act="close" data-force="1">Discard</button><button class="btn sm ghost" data-act="keepediting">Keep editing</button>`;
+  document.body.appendChild(d);
+}
+function requestClose(){ if (D && draftKey()!==D._snap){ showUnsaved(); return; } closeDrawer(); }
 function sheetPreview(s){
   const id = sheetIdFromUrl(s.url);
   if (!id) return `<div class="muted" style="font-size:12px">No preview for this link. Previews work for Google Sheets links.</div>`;
@@ -674,39 +703,56 @@ function sheetPreview(s){
 function drawDrawer(){
   const isNew = !D.id;
   const sheetIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>';
+  const checks = D.checklist||[]; const doneN = checks.filter(c=>c.done).length;
+  const fmtDate = ts => new Date(ts).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
+  const scroll = $(".drawer-b")?.scrollTop || 0;
   document.body.style.overflow = "hidden";
+  document.title = (D.title || "New task") + " · MfAPIs Taskdesk";
   $("#overlay").innerHTML = `<div class="drawer" role="dialog" aria-modal="true" aria-label="${isNew?"New task":"Task details"}">
     <div class="drawer-h"><div class="row"><button class="btn sm" data-act="close">← Back</button><h2>${isNew?"New task":"Task details"}</h2>${isNew?"":`<span class="pill st-${D.status}">${ST[D.status]?.label||""}</span><span class="pill pr-${D.priority}">${PRI[D.priority]||""}</span><span class="due ${dueCls(D)}">${fmtDue(D.due)}</span>`}</div>
-      <div class="row">${isNew?"":`<button class="btn sm" data-share="${D.id}">Share</button>`}<button class="btn sm pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div>
+      <div class="row">${isNew?"":`${D.status!=="done"?`<button class="btn sm" data-act="markdone">✓ Mark done</button>`:""}<button class="btn sm" data-act="duplicate">Duplicate</button><button class="btn sm" data-share="${D.id}">Share</button>`}<button class="btn sm pri" data-act="save" title="Ctrl+S">${isNew?"Create task":"Save changes"}</button></div></div>
     <div class="drawer-b"><div class="tp">
       <section class="glass">
         <label class="fl tp-title">Task<input id="dTitle" value="${esc(D.title)}" placeholder="What needs to be done?"></label>
-        <label class="fl">Details<textarea id="dDesc" rows="5" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
+        ${isNew||!D.createdAt?"":`<div class="muted" style="font-size:12px;margin-top:-8px">Created ${fmtDate(D.createdAt)}${D.updatedAt?` · last updated ${ago(D.updatedAt)}`:""}${D.completedAt?` · completed ${fmtDate(D.completedAt)}`:""}</div>`}
+        <label class="fl">Details<textarea id="dDesc" rows="6" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
         <div class="three">
           <label class="fl">Status<select id="dStatus">${STATUSES.map(s=>`<option value="${s.k}" ${D.status===s.k?"selected":""}>${s.label}</option>`).join("")}</select></label>
           <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
           <label class="fl">Deadline<input id="dDue" type="date" value="${esc(D.due)}"></label>
         </div>
-        <label class="fl"><span>Progress · <span id="dProgV">${D.progress||0}%</span></span><input id="dProg" type="range" min="0" max="100" step="5" value="${D.progress||0}"></label>
+        <label class="fl"><span>Progress · <span id="dProgV">${D.progress||0}%</span>${checks.length?" · set by the checklist":""}</span><input id="dProg" type="range" min="0" max="100" step="${(checks.length||(D.progress||0)%5)?1:5}" value="${D.progress||0}" ${checks.length?"disabled":""}></label>
+        <div class="fl">Checklist${checks.length?` · ${doneN} of ${checks.length} done`:""}
+          <div class="checks">
+            ${checks.map((c,i)=>`<div class="chk"><input type="checkbox" id="chk${i}" data-chk="${i}" ${c.done?"checked":""} aria-label="${esc(c.text)}"><label for="chk${i}" class="${c.done?"dn":""}">${esc(c.text)}</label><button class="btn sm ghost danger" type="button" data-rmchk="${i}" aria-label="Remove step">✕</button></div>`).join("")}
+            <div class="row" style="margin-top:4px"><input class="f" id="cText" placeholder="Add a step, then press Enter" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="addcheck">Add</button></div>
+          </div></div>
         <div class="fl">Working on it
           <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="#team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
         ${isNew ? "" : `<div class="fl">Notes & activity
           <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
-            <div class="row"><input class="f" id="nText" placeholder="Add an update for the team" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="note">Post</button></div>
+            <div class="row"><input class="f" id="nText" placeholder="Add an update for the team, then press Enter" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="note">Post</button></div>
             <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
       </section>
       <section class="glass">
         <div class="panel-h"><h2>Attached sheets</h2><span class="muted" style="font-size:12px">${D.sheets.length} attached</span></div>
         <div class="row"><input class="f" id="sName" placeholder="Sheet name" style="flex:1;min-width:120px"><input class="f" id="sUrl" placeholder="Paste Google Sheets link" style="flex:2;min-width:180px"><button class="btn sm" type="button" data-act="addsheet">Attach</button></div>
-        ${D.sheets.filter(s=>sheetIdFromUrl(s.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis" style="align-self:flex-start">Merge this task's sheets into one</button>`:""}
-        ${D.sheets.map((s,i)=>`<div class="sheetbox"><div class="sheet"><span class="sicon">${sheetIcon}</span><div style="min-width:0"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a><small>${sheetIdFromUrl(s.url)?"Google Sheet · opens in a new tab":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>${sheetPreview(s)}</div>`).join("") || `<div class="empty">No sheets yet. Paste a Google Sheets link above to attach one and see its preview here.</div>`}
-        ${D.sheets.some(s=>sheetIdFromUrl(s.url)) && !window.claude ? `<div class="muted" style="font-size:12px">A preview shows only if the Google account in this browser can open that sheet.</div>`:""}
+        ${D.sheets.filter(x=>sheetIdFromUrl(x.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis" style="align-self:flex-start">Merge this task's sheets into one</button>`:""}
+        ${D.sheets.map((x,i)=>`<div class="sheetbox"><div class="sheet"><span class="sicon">${sheetIcon}</span><div style="min-width:0"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a><small>${sheetIdFromUrl(x.url)?"Google Sheet · opens in a new tab":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>${sheetPreview(x)}</div>`).join("") || `<div class="empty">No sheets yet. Paste a Google Sheets link above to attach one and see its preview here.</div>`}
+        ${D.sheets.some(x=>sheetIdFromUrl(x.url)) && !window.claude ? `<div class="muted" style="font-size:12px">A preview shows only if the Google account in this browser can open that sheet.</div>`:""}
       </section>
     </div></div>
-    <div class="drawer-f">${isNew?"<span></span>":`<button class="btn ghost danger" data-act="del">Delete task</button>`}<div class="row"><button class="btn" data-act="close">${isNew?"Cancel":"Close"}</button><button class="btn pri" data-act="save">${isNew?"Create task":"Save changes"}</button></div></div></div>`;
+    <div class="drawer-f">${isNew?"<span></span>":`<button class="btn ghost danger" data-act="del">Delete task</button>`}<div class="row"><button class="btn" data-act="close">${isNew?"Cancel":"Close"}</button><button class="btn pri" data-act="save" title="Ctrl+S">${isNew?"Create task":"Save changes"}</button></div></div></div>`;
   const ov = $("#overlay");
   ov.querySelector("#dProg").addEventListener("input", e => ov.querySelector("#dProgV").textContent = e.target.value+"%");
-  if (isNew) ov.querySelector("#dTitle").focus();
+  const ta = ov.querySelector("#dDesc");
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.max(160, ta.scrollHeight + 2) + "px"; };
+  ta.addEventListener("input", grow); grow();
+  ov.querySelectorAll("[data-chk]").forEach(c => c.addEventListener("change", () => { readDrawer(); D.checklist[+c.dataset.chk].done = c.checked; syncProg(); drawDrawer(); }));
+  const onEnter = (sel, act) => { const el = ov.querySelector(sel); if (el) el.addEventListener("keydown", e => { if (e.key==="Enter" && !e.ctrlKey && !e.metaKey){ e.preventDefault(); ov.querySelector(`[data-act="${act}"]`).click(); } }); };
+  onEnter("#cText","addcheck"); onEnter("#nText","note"); onEnter("#sUrl","addsheet");
+  ov.querySelector(".drawer-b").scrollTop = scroll;
+  if (isNew && !D.title) ov.querySelector("#dTitle").focus();
 }
 function readDrawer(){
   const ov=$("#overlay");
@@ -722,11 +768,11 @@ function logAct(t, text, type="event"){
   if (S.backend) e.byName = S.meName; // website mode: no profile service, so keep the author's name
   t.activity = [...(t.activity||[]), e].slice(-40);
 }
-function closeDrawer(){ $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) location.hash = S.lastView; else render(); }
+function closeDrawer(){ $("#unsaved")?.remove(); $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) location.hash = S.lastView; else render(); }
 
 let writing = Promise.resolve();
 function saveTask(t){
-  const clean = {...t}; delete clean._orig;
+  const clean = {...t}; delete clean._orig; delete clean._snap;
   const id = clean.id; delete clean.id;
   clean.updatedAt = Date.now();
   writing = writing.then(()=>S.db.collection("tasks").doc(id).set(clean)).catch(e=>{ toast(e?.code==="invalid_argument"?"You can view tasks but not change them.":e?.code==="quota_exceeded"?"The task store is full. Delete old tasks first.":"Couldn't save. Try again."); throw e; });
@@ -741,11 +787,14 @@ async function onSave(){
   else {
     if (D._orig.status!==D.status) logAct(D,`moved it to ${ST[D.status].label}`);
     else if (D._orig.progress!==D.progress) logAct(D,`set progress to ${D.progress}%`);
+    if (D._orig.due!==(D.due||"")) logAct(D, D.due ? `set the deadline to ${new Date(D.due+"T00:00:00").toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"})}` : "removed the deadline");
+    if (D._orig.priority!==D.priority) logAct(D,`set priority to ${PRI[D.priority]}`);
+    if (D._orig.assignees!==D.assignees.join(",")) logAct(D,"changed who is working on it");
   }
   if (D.status==="done" && !D.completedAt){ D.completedAt=Date.now(); D.progress=100; }
   if (D.status!=="done") delete D.completedAt;
-  if (isNew){ const t = D; closeDrawer(); try { await saveTask(t); toast("Task created"); } catch {} return; }
-  try { await saveTask({...D}); if (D){ D._orig = {status:D.status, progress:D.progress}; drawDrawer(); } toast("Saved"); } catch {}
+  if (isNew){ const t = D; closeDrawer(); try { await saveTask(t); toast("Task created"); return true; } catch { return false; } }
+  try { await saveTask({...D}); if (D){ D._orig = origOf(D); drawDrawer(); D._snap = draftKey(); } toast("Saved"); return true; } catch { return false; }
 }
 
 /* ---------- events ---------- */
@@ -785,14 +834,17 @@ function bind(v){
     }
     render();
   });
+  const ps = $("#pgSize"); if (ps) ps.addEventListener("change", e => { S.pageSize = +e.target.value; S.pages.tasks = 1; render(); });
   const dd = $("#dedupe"); if (dd) dd.addEventListener("change", e => { S.merge.dedupe = e.target.checked; });
   const at = $("#allTabs"); if (at) at.addEventListener("change", e => { S.merge.allTabs = e.target.checked; });
   view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
 }
 document.addEventListener("click", async e => {
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort]");
   if (!a) return;
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
+  if (a.dataset.rmchk){ readDrawer(); D.checklist.splice(+a.dataset.rmchk,1); syncProg(); drawDrawer(); return; }
+  if (a.dataset.sort){ const k = a.dataset.sort; S.sort = {k, dir: S.sort.k===k ? -S.sort.dir : 1}; S.pages.tasks = 1; render(); return; }
   if (a.dataset.page){ const [k,n] = a.dataset.page.split(":"); S.pages[k] = +n; render(); return; }
   if (a.dataset.open && !e.target.closest("a[target]")) { e.preventDefault(); goTask(a.dataset.open); return; }
   if (a.dataset.pick){ const id=a.dataset.pick; D.assignees = D.assignees.includes(id) ? D.assignees.filter(x=>x!==id) : [...D.assignees,id]; a.classList.toggle("on"); a.setAttribute("aria-pressed", D.assignees.includes(id)); return; }
@@ -801,14 +853,29 @@ document.addEventListener("click", async e => {
   if (a.dataset.delm){ const id=a.dataset.delm; if(a.dataset.confirm!=="1"){ a.dataset.confirm="1"; a.textContent="Confirm remove"; return; }
     try { await S.db.doc("team/"+id).delete(); toast("Member removed"); } catch { toast("Couldn't remove member."); } return; }
   const act = a.dataset.act;
-  if (act==="new") openTask(null);
-  else if (act==="close"){ if (a.tagName!=="A") e.preventDefault(); closeDrawer(); }
+  if (act==="new"){ openTask(null); if (D && a.dataset.status){ D.status = a.dataset.status; drawDrawer(); D._snap = draftKey(); } }
+  else if (act==="close"){ if (D && !a.dataset.force && draftKey()!==D._snap){ e.preventDefault(); showUnsaved(); return; } if (a.tagName!=="A") e.preventDefault(); closeDrawer(); }
+  else if (act==="keepediting") $("#unsaved")?.remove();
+  else if (act==="saveclose"){ $("#unsaved")?.remove(); if (await onSave() && D) closeDrawer(); }
   else if (act==="save") onSave();
+  else if (act==="markdone"){ $("#dStatus").value = "done"; onSave(); }
+  else if (act==="duplicate"){
+    if (!S.db){ toast("Saving is off in this view."); return; }
+    readDrawer(); const c = JSON.parse(JSON.stringify(D)); delete c._orig; delete c._snap;
+    c.id = S.db.collection("tasks").doc().id; c.title += " (copy)"; c.status = "todo"; c.progress = 0; delete c.completedAt;
+    (c.checklist||[]).forEach(x => x.done = false); c.createdAt = Date.now(); c.createdBy = S.meId||""; c.activity = []; logAct(c,"created the task as a copy");
+    try { await saveTask(c); toast("Copy created. It's in To do."); } catch {}
+  }
+  else if (act==="addcheck"){ readDrawer(); const tx = $("#cText").value.trim(); if (!tx) return; D.checklist.push({text:tx, done:false}); syncProg(); drawDrawer(); $("#cText").focus(); }
+  else if (act==="exporttasks"){
+    const r = {cols:["Task","Status","Priority","Working on it","Deadline","Progress","Checklist","Sheets","Details"], rows: sortedTasks().map(t => [t.title, ST[t.status]?.label||t.status, PRI[t.priority]||"", (t.assignees||[]).map(x=>member(x)?.name||"").filter(Boolean).join("; "), t.due||"", (t.progress||0)+"%", (t.checklist||[]).length?`${t.checklist.filter(x=>x.done).length}/${t.checklist.length}`:"", (t.sheets||[]).map(x=>x.url).join(" "), t.description||""])};
+    try { await S.dl.save({filename:"tasks-"+todayStr()+".csv", data:new Blob([toCSV(r)],{type:"text/csv"})}); } catch { toast("The file wasn't saved."); }
+  }
   else if (act==="del"){ if(a.dataset.confirm!=="1"){ a.dataset.confirm="1"; a.textContent="Click again to delete"; return; } const id=D.id; closeDrawer(); try{ await S.db.doc("tasks/"+id).delete(); toast("Task deleted"); }catch{ toast("Couldn't delete."); } }
   else if (act==="addsheet"){ readDrawer(); const url=$("#sUrl").value.trim(); if(!url){toast("Paste a sheet link.");return;} if(!/^https?:\/\//i.test(url)){toast("That doesn't look like a link.");return;}
     const name=$("#sName").value.trim() || (sheetIdFromUrl(url)?"Google Sheet "+(D.sheets.length+1):url.replace(/^https?:\/\//,"").slice(0,40));
     D.sheets.push({name,url}); if(D.id) logAct(D,`attached sheet “${name}”`); drawDrawer(); }
-  else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig={status:t.status,progress:t.progress}; drawDrawer(); }catch{} }
+  else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig=origOf(D); drawDrawer(); D._snap=draftKey(); }catch{} }
   else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; location.hash="sheets"; }
   else if (act==="merge") doMerge();
   else if (act==="gconnect"){ try { await window.TaskdeskGoogle.signIn(); toast("Google connected"); } catch(err){ toast(err.message); } render(); }
@@ -816,7 +883,14 @@ document.addEventListener("click", async e => {
   else if (act==="csv"){ const title=($("#mTitle")?.value||"merged").replace(/[^\w\- ]+/g,"").trim()||"merged"; try{ await S.dl.save({filename:title+".csv", data:new Blob([toCSV(S.merge.result)],{type:"text/csv"})}); }catch(err){ if(err?.code!=="cancelled"&&err?.code!=="declined") toast("The file wasn't saved."); } }
   else if (act==="copy"){ const csv=toCSV(S.merge.result); try{ await navigator.clipboard.writeText(csv); toast("Copied. Paste into any sheet."); }catch{ toast("Copy isn't allowed here. Use Save as CSV."); } }
 });
-document.addEventListener("keydown", e => { if (e.key==="Escape" && D) closeDrawer(); });
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||"");
+  if (e.key==="Escape" && D){ requestClose(); return; }
+  if (D && (e.ctrlKey||e.metaKey) && (e.key==="s"||e.key==="S"||e.key==="Enter")){ e.preventDefault(); onSave(); return; }
+  if (D || typing || !S.loaded || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".scrim")) return;
+  if (e.key==="/"){ e.preventDefault(); $("#q").focus(); }
+  else if (e.key==="n"||e.key==="N"){ e.preventDefault(); openTask(null); }
+});
 
 /* ---------- local mode: browser storage stands in for the shared store ---------- */
 function localDb(){
