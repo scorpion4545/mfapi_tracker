@@ -395,7 +395,7 @@ function viewOverview(){
       <div><h1>${greet}${S.meName?", "+esc(S.meName.split(" ")[0]):""}</h1><div class="sub">${open.length} open tasks · ${over.length} overdue · ${week.length} due in the next 7 days</div></div>
       <div class="row"><a class="btn" href="/sheets">Merge sheets</a><button class="btn pri" data-act="new">+ New task</button></div>
     </div>
-    ${exampleBanner()}
+    ${exampleBanner()}${adminBanner()}
     <div class="tiles">
       ${tile(open.length,"Active tasks",`${people} people working`,'<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>')}
       ${tile(review.length,"Waiting for review","Ready for sign-off",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}
@@ -504,11 +504,37 @@ function viewTasks(){
     <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr>${th("title","Task")}${th("status","Status")}${th("priority","Priority")}<th>Working on it</th>${th("due","Deadline")}${th("progress","Progress")}<th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>
       <div class="row" style="justify-content:space-between"><label class="row muted" style="font-size:13px;gap:6px">Rows per page<select class="f" id="pgSize" style="padding:4px 8px">${[10,25,50].map(n=>`<option ${S.pageSize===n?"selected":""}>${n}</option>`).join("")}</select></label><div style="flex:1;min-width:260px">${pg.html}</div></div>` : `<div class="empty">${S.tasks.length ? "No tasks match these filters." : "No tasks yet."}</div>`}</section></div>`;
 }
+const pendingReqs = () => (S.reqs||[]).filter(r => r.status==="pending");
+function adminBanner(){
+  const n = S.backend?.isAdmin ? pendingReqs().length : 0;
+  return n ? `<div class="example"><span><b>${n} ${n===1?"person is":"people are"} waiting for access.</b> Review the request${n===1?"":"s"} on the Team page.</span><a class="btn sm pri" href="/team">Review</a></div>` : "";
+}
+function adminPanel(){
+  if (!S.backend?.isAdmin) return "";
+  const pend = pendingReqs(); const rej = (S.reqs||[]).filter(r => r.status==="rejected"); const mem = S.members||[];
+  const reqRow = (r, rejected) => `<div class="note" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center"><div style="min-width:0"><b>${esc(r.name)}</b>${r.role?` · ${esc(r.role)}`:""}<div class="muted" style="font-size:12.5px">${esc(r.email)}${r.phone?` · ${esc(r.phone)}`:""} · ${rejected?"rejected":"asked"} ${ago(Date.parse(rejected ? (r.decided_at||r.created_at) : r.created_at))}</div>${r.note?`<div style="margin-top:4px;white-space:pre-wrap">${esc(r.note)}</div>`:""}</div><div class="row"><button class="btn sm ${rejected?"":"pri"}" data-decide="${r.user_id}:1">${rejected?"Approve after all":"Approve"}</button>${rejected?"":`<button class="btn sm danger" data-decide="${r.user_id}:0">Reject</button>`}</div></div>`;
+  return `<section class="panel glass"><div class="panel-h"><h2>Access requests</h2><div class="row"><span class="muted" style="font-size:12px">${pend.length} waiting</span><button class="btn sm ghost" data-act="reqrefresh">Refresh</button></div></div>
+    ${S.adminErr ? `<div class="note err">${esc(S.adminErr)}</div>` : ""}
+    ${pend.length ? pend.map(r => reqRow(r, false)).join("") : `<div class="muted">No one is waiting for approval. New people sign in, fill in a short form, and appear here.</div>`}
+    ${rej.length ? `<details><summary class="muted" style="cursor:pointer">Rejected requests (${rej.length})</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${rej.map(r => reqRow(r, true)).join("")}</div></details>` : ""}
+    <h2 style="margin-top:6px">People with access</h2>
+    <div class="list">${mem.map(m => `<div class="li" style="cursor:default;grid-template-columns:minmax(0,1fr) auto"><div style="min-width:0"><div class="t">${esc(m.name||m.email)}${m.is_admin?' <span class="pill st-progress">Admin</span>':""}</div><div class="muted" style="font-size:12.5px">${esc(m.email)}</div></div>${m.is_admin?"<span></span>":`<button class="btn sm ghost danger" data-rmmember="${esc(m.email)}">Remove access</button>`}</div>`).join("") || `<div class="muted">Loading…</div>`}</div>
+  </section>`;
+}
+async function loadAdmin(force){
+  if (!S.backend?.isAdmin) return;
+  const before = JSON.stringify([S.reqs, S.members, S.adminErr]);
+  try { [S.reqs, S.members] = await Promise.all([S.backend.listRequests(), S.backend.listMembers()]); S.adminErr = ""; }
+  catch (e) { S.adminErr = "Couldn't load access requests: " + (e?.message || "unknown error"); }
+  // Re-render only when something changed, so a background refresh never wipes a form being typed in.
+  if ((force || before !== JSON.stringify([S.reqs, S.members, S.adminErr])) && !D) render();
+}
 function viewTeam(){
   const tm = teamView(); const ts = tasksView();
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="hero"><div><h1>Team</h1><div class="sub">Who is working on what, and what is late.</div></div></div>
     ${exampleBanner()}
+    ${adminPanel()}
     <section class="panel glass"><h2>Add a team member</h2>
       <form id="addMember" class="row"><input class="f" id="mName" placeholder="Name" required style="flex:1;min-width:160px"><input class="f" id="mRole" placeholder="Role (optional)" style="flex:1;min-width:140px"><button class="btn pri" type="submit">Add member</button></form></section>
     <div class="team">${tm.map(m=>{ const mine = ts.filter(t=>(t.assignees||[]).includes(m.id)); const open = mine.filter(t=>t.status!=="done");
@@ -846,9 +872,24 @@ function bind(v){
 document.addEventListener("click", async e => {
   const link = e.target.closest('a[href^="/"]:not([target])');
   if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember]");
   if (!a) return;
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
+  if (a.dataset.decide){
+    const [uid, yes] = a.dataset.decide.split(":"); const r = (S.reqs||[]).find(x => x.user_id===uid); a.disabled = true;
+    try {
+      await S.backend.decide(uid, yes==="1");
+      // An approved person also becomes assignable on tasks, unless someone with that name is already on the team.
+      if (yes==="1" && r && !S.team.some(m => (m.name||"").toLowerCase()===r.name.toLowerCase())) await S.db.collection("team").add({name:r.name, role:r.role||"", addedAt:Date.now()});
+      toast(yes==="1" ? `${r?.name||"They"} can now sign in.` : "Request rejected.");
+    } catch (err) { toast("Couldn't save that decision: " + (err?.message||"error")); }
+    loadAdmin(true); return;
+  }
+  if (a.dataset.rmmember){
+    if (a.dataset.confirm!=="1"){ a.dataset.confirm = "1"; a.textContent = "Click again to remove"; return; }
+    try { await S.backend.removeMember(a.dataset.rmmember); toast("Access removed."); } catch (err) { toast("Couldn't remove access: " + (err?.message||"error")); }
+    loadAdmin(true); return;
+  }
   if (a.dataset.rmchk){ readDrawer(); D.checklist.splice(+a.dataset.rmchk,1); syncProg(); drawDrawer(); return; }
   if (a.dataset.sort){ const k = a.dataset.sort; S.sort = {k, dir: S.sort.k===k ? -S.sort.dir : 1}; S.pages.tasks = 1; render(); return; }
   if (a.dataset.page){ const [k,n] = a.dataset.page.split(":"); S.pages[k] = +n; render(); return; }
@@ -862,6 +903,7 @@ document.addEventListener("click", async e => {
   if (act==="new"){ openTask(null); if (D && a.dataset.status){ D.status = a.dataset.status; drawDrawer(); D._snap = draftKey(); } }
   else if (act==="close"){ if (D && !a.dataset.force && draftKey()!==D._snap){ e.preventDefault(); showUnsaved(); return; } e.preventDefault(); closeDrawer(); if (a.tagName==="A") nav(a.getAttribute("href")); }
   else if (act==="keepediting") $("#unsaved")?.remove();
+  else if (act==="reqrefresh"){ await loadAdmin(true); toast("Up to date"); }
   else if (act==="saveclose"){ $("#unsaved")?.remove(); if (await onSave() && D) closeDrawer(); }
   else if (act==="save") onSave();
   else if (act==="markdone"){ $("#dStatus").value = "done"; onSave(); }
@@ -928,6 +970,7 @@ render();
     const b = await window.TaskdeskBackend.start(err => { S.stale = true; render(); });
     if (!b) return;
     S.backend = b; S.db = b.db; S.dl = localDownloads; S.meId = b.me.id; S.meName = b.me.name;
+    loadAdmin(); setInterval(loadAdmin, 60000);
     $("#me").innerHTML = `<span class="av" style="background:${colorFor(b.me.id)};margin:0;border:0;width:30px;height:30px">${esc(initials(b.me.name))}</span><span>${esc(b.me.name)}</span><button class="btn sm ghost" id="signOut">Sign out</button>`;
     $("#signOut").onclick = () => b.signOut();
     let gotT = false;

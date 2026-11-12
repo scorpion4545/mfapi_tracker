@@ -25,7 +25,13 @@ def db_url() -> str:
 
 
 def main() -> None:
-    emails = [e.strip().lower() for e in sys.argv[1:] if e.strip()]
+    args = sys.argv[1:]
+    admins = []
+    while "--admin" in args:  # --admin someone@x.com : add as a member who can approve requests
+        i = args.index("--admin")
+        admins.append(args[i + 1].strip().lower())
+        del args[i:i + 2]
+    emails = [e.strip().lower() for e in args if e.strip()] + admins
     bad = [e for e in emails if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e)]
     if bad:
         sys.exit(f"Not valid emails: {bad}")
@@ -44,9 +50,11 @@ def main() -> None:
                 "insert into public.taskdesk_members (email) values (%s) on conflict do nothing",
                 [(e,) for e in emails],
             )
+            if admins:
+                cur.execute("update public.taskdesk_members set is_admin = true where email = any(%s)", (admins,))
             cur.execute("notify pgrst, 'reload schema'")
-            cur.execute("select email from public.taskdesk_members order by email")
-            members = [r[0] for r in cur.fetchall()]
+            cur.execute("select email, is_admin from public.taskdesk_members order by email")
+            members = [r[0] + (" (admin)" if r[1] else "") for r in cur.fetchall()]
             cur.execute(
                 "select count(*) from pg_publication_tables where pubname='supabase_realtime' and tablename='taskdesk_docs'"
             )
