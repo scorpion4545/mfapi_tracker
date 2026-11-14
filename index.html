@@ -485,7 +485,7 @@ function card(t){
     <div class="t">${esc(t.title)}</div>
     <div class="bar" title="${t.progress||0}% complete"><i style="width:${t.progress||0}%"></i></div>
     <div class="meta"><div class="avs">${(t.assignees||[]).map(avatarAny).join("") || '<span>Unassigned</span>'}</div>
-    <span class="row" style="gap:10px">${(t.checklist||[]).length?`<span class="chip" title="Checklist steps done">☑ ${t.checklist.filter(c=>c.done).length}/${t.checklist.length}</span>`:""}${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
+    <span class="row" style="gap:10px">${(t.prs||[]).length?`<span class="chip" title="PR links">PR ${t.prs.length}</span>`:""}${(t.checklist||[]).length?`<span class="chip" title="Checklist steps done">☑ ${t.checklist.filter(c=>c.done).length}/${t.checklist.length}</span>`:""}${(t.sheets||[]).length?`<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M10 3v18"/></svg>${t.sheets.length}</span>`:""}<span style="font-family:var(--f-mono)">${t.progress||0}%</span></span></div></div>`;
 }
 
 function sortedTasks(){
@@ -708,13 +708,13 @@ function openTask(id){
   if (showingExample() && id){ toast("This is an example task. Create a real one to edit it."); return; }
   const t = id ? S.tasks.find(x=>x.id===id) : null;
   D = t ? JSON.parse(JSON.stringify(t)) : {id:null,title:"",description:"",status:"todo",priority:"medium",assignees:[],due:"",progress:0,sheets:[],activity:[]};
-  D.checklist ||= []; D.sheets ||= []; D.assignees ||= []; D.activity ||= [];
+  D.checklist ||= []; D.prs ||= []; D.sheets ||= []; D.assignees ||= []; D.activity ||= [];
   D._orig = t ? origOf(D) : null;
   drawDrawer();
   D._snap = draftKey();
 }
 const origOf = t => ({status:t.status, progress:t.progress, due:t.due||"", priority:t.priority, assignees:(t.assignees||[]).join(",")});
-function draftKey(){ readDrawer(); return JSON.stringify([D.title, D.description, D.status, D.priority, D.due, D.progress, D.assignees, D.sheets, D.checklist]); }
+function draftKey(){ readDrawer(); return JSON.stringify([D.title, D.description, D.status, D.priority, D.due, D.progress, D.assignees, D.sheets, D.checklist, D.prs]); }
 function syncProg(){ const c = D.checklist||[]; if (c.length) D.progress = Math.round(c.filter(x=>x.done).length/c.length*100); }
 function showUnsaved(){
   if ($("#unsaved")) return;
@@ -729,6 +729,16 @@ function sheetPreview(s){
   if (window.claude) return "";
   const gid = (String(s.url).match(/[#&?]gid=(\d+)/)||[])[1];
   return `<div class="prev"><iframe loading="lazy" title="Preview of ${esc(s.name)}" src="https://docs.google.com/spreadsheets/d/${id}/preview${gid?`?gid=${gid}#gid=${gid}`:""}"></iframe></div>`;
+}
+// "owner/repo#12" for GitHub pull requests, "repo!12" for GitLab merge requests, else the address itself.
+function prLabel(url){
+  const g = String(url).match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i);
+  if (g) return {label: `${g[2]} #${g[3]}`, sub: `${g[1]}/${g[2]} · GitHub pull request`};
+  const l = String(url).match(/\/([^/]+)\/-\/merge_requests\/(\d+)/i);
+  if (l) return {label: `${l[1]} !${l[2]}`, sub: "GitLab merge request"};
+  const b = String(url).match(/bitbucket\.org\/[^/]+\/([^/]+)\/pull-requests\/(\d+)/i);
+  if (b) return {label: `${b[1]} #${b[2]}`, sub: "Bitbucket pull request"};
+  return {label: String(url).replace(/^https?:\/\//,"").slice(0,60), sub: "Link"};
 }
 function drawDrawer(){
   const isNew = !D.id;
@@ -765,7 +775,10 @@ function drawDrawer(){
             <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
       </section>
       <section class="glass">
-        <div class="panel-h"><h2>Attached sheets</h2><span class="muted" style="font-size:12px">${D.sheets.length} attached</span></div>
+        <div class="panel-h"><h2>PR links</h2><span class="muted" style="font-size:12px">${D.prs.length} linked</span></div>
+        <div class="row"><input class="f" id="pUrl" placeholder="Paste a pull request link, then press Enter" style="flex:2;min-width:180px"><input class="f" id="pNote" placeholder="Note (optional)" style="flex:1;min-width:110px"><button class="btn sm" type="button" data-act="addpr">Add</button></div>
+        ${D.prs.map((x,i)=>{ const l = prLabel(x.url); return `<div class="sheet"><span class="sicon" style="background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--info)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.500v7M18 15.500V11a4 4 0 0 0-4-4h-2.500"/></svg></span><div style="min-width:0"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.note || l.label)}</a><small>${esc(x.note ? l.label + " · " + l.sub : l.sub)}</small></div><button class="btn sm ghost danger" data-rmpr="${i}" aria-label="Remove PR link">Remove</button></div>`; }).join("") || `<div class="muted" style="font-size:13px">No PR links yet.</div>`}
+        <div class="panel-h" style="margin-top:8px"><h2>Attached sheets</h2><span class="muted" style="font-size:12px">${D.sheets.length} attached</span></div>
         <div class="row"><input class="f" id="sName" placeholder="Sheet name" style="flex:1;min-width:120px"><input class="f" id="sUrl" placeholder="Paste Google Sheets link" style="flex:2;min-width:180px"><button class="btn sm" type="button" data-act="addsheet">Attach</button></div>
         ${D.sheets.filter(x=>sheetIdFromUrl(x.url)).length>=2 && D.id ? `<button class="btn sm" type="button" data-act="mergethis" style="align-self:flex-start">Merge this task's sheets into one</button>`:""}
         ${D.sheets.map((x,i)=>`<div class="sheetbox"><div class="sheet"><span class="sicon">${sheetIcon}</span><div style="min-width:0"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a><small>${sheetIdFromUrl(x.url)?"Google Sheet · opens in a new tab":"Link"}</small></div><button class="btn sm ghost danger" data-rmsheet="${i}" aria-label="Remove sheet">Remove</button></div>${sheetPreview(x)}</div>`).join("") || `<div class="empty">No sheets yet. Paste a Google Sheets link above to attach one and see its preview here.</div>`}
@@ -780,7 +793,7 @@ function drawDrawer(){
   ta.addEventListener("input", grow); grow();
   ov.querySelectorAll("[data-chk]").forEach(c => c.addEventListener("change", () => { readDrawer(); D.checklist[+c.dataset.chk].done = c.checked; syncProg(); drawDrawer(); }));
   const onEnter = (sel, act) => { const el = ov.querySelector(sel); if (el) el.addEventListener("keydown", e => { if (e.key==="Enter" && !e.ctrlKey && !e.metaKey){ e.preventDefault(); ov.querySelector(`[data-act="${act}"]`).click(); } }); };
-  onEnter("#cText","addcheck"); onEnter("#nText","note"); onEnter("#sUrl","addsheet");
+  onEnter("#cText","addcheck"); onEnter("#nText","note"); onEnter("#sUrl","addsheet"); onEnter("#pUrl","addpr"); onEnter("#pNote","addpr");
   ov.querySelector(".drawer-b").scrollTop = scroll;
   if (isNew && !D.title) ov.querySelector("#dTitle").focus();
 }
@@ -872,7 +885,7 @@ function bind(v){
 document.addEventListener("click", async e => {
   const link = e.target.closest('a[href^="/"]:not([target])');
   if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr]");
   if (!a) return;
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
   if (a.dataset.decide){
@@ -890,6 +903,7 @@ document.addEventListener("click", async e => {
     try { await S.backend.removeMember(a.dataset.rmmember); toast("Access removed."); } catch (err) { toast("Couldn't remove access: " + (err?.message||"error")); }
     loadAdmin(true); return;
   }
+  if (a.dataset.rmpr){ readDrawer(); const x = D.prs.splice(+a.dataset.rmpr,1)[0]; if (D.id) logAct(D,`removed PR link ${prLabel(x.url).label}`); drawDrawer(); return; }
   if (a.dataset.rmchk){ readDrawer(); D.checklist.splice(+a.dataset.rmchk,1); syncProg(); drawDrawer(); return; }
   if (a.dataset.sort){ const k = a.dataset.sort; S.sort = {k, dir: S.sort.k===k ? -S.sort.dir : 1}; S.pages.tasks = 1; render(); return; }
   if (a.dataset.page){ const [k,n] = a.dataset.page.split(":"); S.pages[k] = +n; render(); return; }
@@ -913,6 +927,13 @@ document.addEventListener("click", async e => {
     c.id = S.db.collection("tasks").doc().id; c.title += " (copy)"; c.status = "todo"; c.progress = 0; delete c.completedAt;
     (c.checklist||[]).forEach(x => x.done = false); c.createdAt = Date.now(); c.createdBy = S.meId||""; c.activity = []; logAct(c,"created the task as a copy");
     try { await saveTask(c); toast("Copy created. It's in To do."); } catch {}
+  }
+  else if (act==="addpr"){
+    readDrawer(); const url = $("#pUrl").value.trim(); const note = $("#pNote").value.trim();
+    if (!url){ toast("Paste a PR link."); return; }
+    if (!/^https?:\/\/\S+$/i.test(url)){ toast("That doesn't look like a link."); return; }
+    if (D.prs.some(x => x.url===url)){ toast("That PR is already linked."); return; }
+    D.prs.push(note ? {url, note} : {url}); if (D.id) logAct(D,`linked PR ${prLabel(url).label}`); drawDrawer(); $("#pUrl").focus();
   }
   else if (act==="addcheck"){ readDrawer(); const tx = $("#cText").value.trim(); if (!tx) return; D.checklist.push({text:tx, done:false}); syncProg(); drawDrawer(); $("#cText").focus(); }
   else if (act==="exporttasks"){
