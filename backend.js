@@ -32,7 +32,7 @@
       id,
       set: async d => {
         const { error } = await client.from(TABLE).upsert({ collection: col, id, data: d, updated_at: new Date().toISOString() });
-        if (error) throw { code: error.code === "42501" ? "invalid_argument" : "unavailable", message: error.message };
+        if (error) throw { code: error.code === "42501" ? "invalid_argument" : error.code === "23505" ? "conflict" : "unavailable", message: error.message };
         refresh(col);
       },
       delete: async () => {

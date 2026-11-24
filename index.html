@@ -182,6 +182,9 @@ td.srccol{color:var(--accent);font-weight:500}
 th[data-sort]{cursor:pointer;user-select:none}
 th[data-sort]:hover{color:var(--accent)}
 .confirmbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--glass2);border:1px solid var(--accent);padding:10px 14px;border-radius:12px;box-shadow:var(--shadow);z-index:70;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 32px)}
+.tk{font-family:var(--f-mono);font-size:11.5px;font-weight:600;color:var(--accent);letter-spacing:.02em;white-space:nowrap}
+.tkbtn{cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--glass)}
+.tkbtn:hover{border-color:var(--accent)}
 .topbrand{display:none}
 /* full-screen task page */
 .drawer{left:0;width:100%;border-left:0;background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%)}
@@ -275,17 +278,40 @@ const avatar = id => { const m = member(id); const n = m ? m.name : "?"; return 
 const sheetIdFromUrl = u => { const m = String(u).match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/) || String(u).match(/[?&]id=([a-zA-Z0-9_-]{20,})/); return m ? m[1] : null; };
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,2600); }
 
+/* ---------- ticket numbers: W-1234 ---------- */
+const findTask = key => { const k = String(key).toLowerCase(); return S.tasks.find(t => t.id===key || (t.ticket && t.ticket.toLowerCase()===k)); };
+const sameTask = (t, key) => !!t && (t.id===key || (!!t.ticket && t.ticket.toLowerCase()===String(key).toLowerCase()));
+function newTicket(extra){
+  const used = new Set([...S.tasks.map(t => (t.ticket||"").toUpperCase()), ...(extra||[])]);
+  for (const [lo, span] of [[1000,9000],[10000,90000],[100000,900000]])
+    for (let i=0; i<80; i++){ const k = "W-" + (lo + Math.floor(Math.random()*span)); if (!used.has(k)) return k; }
+  return "W-" + Date.now();
+}
+// Safety net: any task saved without a number (for example by an older open tab) gets one. Only the admin
+// does this on the live site, so two people never rewrite the same task at once.
+let ticketing = false;
+async function backfillTickets(){
+  if (ticketing || !S.db || !S.loaded) return;
+  if (S.backend && !S.backend.isAdmin) return;
+  const missing = S.tasks.filter(t => !t.ticket);
+  if (!missing.length) return;
+  ticketing = true;
+  const taken = new Set();
+  try { for (const t of missing){ const nt = {...t, ticket:newTicket(taken)}; taken.add(nt.ticket); await saveTask(nt, {keepTime:true}); } }
+  catch {} finally { ticketing = false; }
+}
+
 /* ---------- example data (shown only while the shared store is empty, never saved) ---------- */
 const EX_TEAM = [{id:"ex1",name:"Riya Sharma",role:"Analyst"},{id:"ex2",name:"Kabir Mehta",role:"Data engineer"},{id:"ex3",name:"Anaya Rao",role:"Ops lead"}];
 function exTasks(){
   const d = n => { const x=new Date(); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
   const now = Date.now();
   return [
-    {id:"e1",title:"Reconcile October AMC disclosures",status:"progress",priority:"high",assignees:["ex1","ex2"],due:d(2),progress:60,sheets:[{name:"Disclosure checklist",url:"#"},{name:"AMC coverage",url:"#"}],createdAt:now-6e8,updatedAt:now-4e6},
-    {id:"e2",title:"Client NAV report for Q3",status:"review",priority:"medium",assignees:["ex3"],due:d(5),progress:90,sheets:[{name:"NAV extract",url:"#"}],createdAt:now-9e8,updatedAt:now-2e7},
-    {id:"e3",title:"Fix ISIN mismatches in holdings",status:"blocked",priority:"high",assignees:["ex2"],due:d(-1),progress:35,sheets:[],createdAt:now-1e9,updatedAt:now-8e7},
-    {id:"e4",title:"Onboard two new AMCs",status:"todo",priority:"low",assignees:["ex1"],due:d(12),progress:0,sheets:[],createdAt:now-2e8,updatedAt:now-2e8},
-    {id:"e5",title:"Weekly data quality audit",status:"done",priority:"medium",assignees:["ex3","ex1"],due:d(-3),progress:100,sheets:[{name:"DQ log",url:"#"}],createdAt:now-1.2e9,updatedAt:now-3e8,completedAt:now-3e8},
+    {id:"e1",ticket:"W-4821",title:"Reconcile October AMC disclosures",status:"progress",priority:"high",assignees:["ex1","ex2"],due:d(2),progress:60,sheets:[{name:"Disclosure checklist",url:"#"},{name:"AMC coverage",url:"#"}],createdAt:now-6e8,updatedAt:now-4e6},
+    {id:"e2",ticket:"W-2307",title:"Client NAV report for Q3",status:"review",priority:"medium",assignees:["ex3"],due:d(5),progress:90,sheets:[{name:"NAV extract",url:"#"}],createdAt:now-9e8,updatedAt:now-2e7},
+    {id:"e3",ticket:"W-7164",title:"Fix ISIN mismatches in holdings",status:"blocked",priority:"high",assignees:["ex2"],due:d(-1),progress:35,sheets:[],createdAt:now-1e9,updatedAt:now-8e7},
+    {id:"e4",ticket:"W-5538",title:"Onboard two new AMCs",status:"todo",priority:"low",assignees:["ex1"],due:d(12),progress:0,sheets:[],createdAt:now-2e8,updatedAt:now-2e8},
+    {id:"e5",ticket:"W-1092",title:"Weekly data quality audit",status:"done",priority:"medium",assignees:["ex3","ex1"],due:d(-3),progress:100,sheets:[{name:"DQ log",url:"#"}],createdAt:now-1.2e9,updatedAt:now-3e8,completedAt:now-3e8},
   ];
 }
 const showingExample = () => S.loaded && S.tasks.length===0 && !S.backend && !S.local;
@@ -304,16 +330,16 @@ const viewPath = k => k==="overview" ? "/" : "/"+k;
 const hashTask = () => { const m = location.pathname.match(/^\/task\/([^/]+)/); return m ? decodeURIComponent(m[1]) : null; };
 const cur = () => { const h = location.pathname.split("/")[1] || "overview"; if (VIEWS.some(v=>v.k===h)) S.lastView = h; return S.lastView; };
 function nav(path, replace){ if (path !== location.pathname) history[replace?"replaceState":"pushState"](null, "", path); render(); }
-function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } nav("/task/"+encodeURIComponent(id)); }
+function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } const t = S.tasks.find(x=>x.id===id); nav("/task/"+encodeURIComponent(t?.ticket||id)); }
 function syncTaskRoute(){
   const tid = hashTask();
   if (tid){
-    if ((D && D.id===tid) || !S.loaded) return;
-    if (S.tasks.some(t=>t.id===tid)) openTask(tid);
+    if ((D && sameTask(D, tid)) || !S.loaded) return;
+    const ft = findTask(tid); if (ft) openTask(ft.id);
     else { toast("That task doesn't exist or was deleted."); nav(viewPath(S.lastView), true); }
   } else if (D && D.id){ $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; }
 }
-const taskLink = id => location.origin + "/task/" + encodeURIComponent(id);
+const taskLink = id => { const t = S.tasks.find(x=>x.id===id); return location.origin + "/task/" + encodeURIComponent(t?.ticket||id); };
 async function shareTask(id){
   const url = taskLink(id);
   try { await navigator.clipboard.writeText(url); toast("Link copied. Anyone on the team list can open it."); }
@@ -347,7 +373,7 @@ function filtered(){
     if (S.fPri && t.priority!==S.fPri) return false;
     if (S.fStatus && S.lastView==="tasks" && t.status!==S.fStatus) return false;
     if (!S.q) return true;
-    const hay = [t.title, t.description, ...(t.assignees||[]).map(a=>member(a)?.name||(EX_TEAM.find(e=>e.id===a)||{}).name), ...(t.sheets||[]).map(s=>s.name)].join(" ").toLowerCase();
+    const hay = [t.ticket, t.title, t.description, ...(t.assignees||[]).map(a=>member(a)?.name||(EX_TEAM.find(e=>e.id===a)||{}).name), ...(t.sheets||[]).map(s=>s.name)].join(" ").toLowerCase();
     return hay.includes(S.q);
   });
 }
@@ -414,7 +440,7 @@ function viewOverview(){
   </div>`;
 }
 function rowItem(t){
-  return `<div class="li" data-open="${t.id}"><div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="row" style="margin-top:4px"><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></div></div><div class="avs">${(t.assignees||[]).map(avatarAny).join("")}</div><div class="due ${dueCls(t)}">${fmtDue(t.due)}</div></div>`;
+  return `<div class="li" data-open="${t.id}"><div style="min-width:0"><div class="t">${t.ticket?`<span class="tk">${esc(t.ticket)}</span> `:""}${esc(t.title)}</div><div class="row" style="margin-top:4px"><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></div></div><div class="avs">${(t.assignees||[]).map(avatarAny).join("")}</div><div class="due ${dueCls(t)}">${fmtDue(t.due)}</div></div>`;
 }
 function avatarAny(id){
   const m = member(id) || EX_TEAM.find(e=>e.id===id); const n = m?m.name:"?";
@@ -481,7 +507,7 @@ function viewBoard(){
 }
 function card(t){
   return `<div class="card" draggable="true" data-open="${t.id}" data-drag="${t.id}">
-    <div class="row" style="justify-content:space-between"><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></div>
+    <div class="row" style="justify-content:space-between"><span class="row" style="gap:6px">${t.ticket?`<span class="tk">${esc(t.ticket)}</span>`:""}<span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></span><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></div>
     <div class="t">${esc(t.title)}</div>
     <div class="bar" title="${t.progress||0}% complete"><i style="width:${t.progress||0}%"></i></div>
     <div class="meta"><div class="avs">${(t.assignees||[]).map(avatarAny).join("") || '<span>Unassigned</span>'}</div>
@@ -490,7 +516,7 @@ function card(t){
 
 function sortedTasks(){
   const {k, dir} = S.sort; const pr = {high:0, medium:1, low:2}; const so = Object.fromEntries(STATUSES.map((x,i)=>[x.k,i]));
-  const val = t => k==="title" ? (t.title||"").toLowerCase() : k==="status" ? (so[t.status]??9) : k==="priority" ? (pr[t.priority]??9) : k==="progress" ? (t.progress||0) : (t.due||"9999");
+  const val = t => k==="ticket" ? (parseInt((t.ticket||"").slice(2),10)||0) : k==="title" ? (t.title||"").toLowerCase() : k==="status" ? (so[t.status]??9) : k==="priority" ? (pr[t.priority]??9) : k==="progress" ? (t.progress||0) : (t.due||"9999");
   return filtered().sort((a,b) => { const x = val(a), y = val(b); return (x<y?-1:x>y?1:0)*dir; });
 }
 function viewTasks(){
@@ -501,7 +527,7 @@ function viewTasks(){
   return `<div style="display:flex;flex-direction:column;gap:16px">
     <div class="hero"><div><h1>All tasks</h1><div class="sub">Click a column heading to sort. Click a row to open the task.</div></div><div class="row">${filterBar(true)}${S.dl?`<button class="btn" data-act="exporttasks">Export CSV</button>`:""}<button class="btn pri" data-act="new">+ New task</button></div></div>
     ${exampleBanner()}
-    <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr>${th("title","Task")}${th("status","Status")}${th("priority","Priority")}<th>Working on it</th>${th("due","Deadline")}${th("progress","Progress")}<th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>
+    <section class="panel glass">${rows.length ? `<div class="tbl" style="max-height:none"><table><thead><tr>${th("ticket","Ticket")}${th("title","Task")}${th("status","Status")}${th("priority","Priority")}<th>Working on it</th>${th("due","Deadline")}${th("progress","Progress")}<th>Sheets</th><th></th></tr></thead><tbody>${rows.map(t=>`<tr data-open="${t.id}"><td><span class="tk">${esc(t.ticket||"")}</span></td><td style="font-weight:600;max-width:340px" title="${esc(t.title)}">${esc(t.title)}</td><td><span class="pill st-${t.status}">${ST[t.status]?.label||t.status}</span></td><td><span class="pill pr-${t.priority}">${PRI[t.priority]||""}</span></td><td><div class="avs">${(t.assignees||[]).map(avatarAny).join("")||'<span class="muted">Unassigned</span>'}</div></td><td><span class="due ${dueCls(t)}">${fmtDue(t.due)}</span></td><td><div class="row" style="flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${t.progress||0}%"></i></div><span style="font-family:var(--f-mono);font-size:12px">${t.progress||0}%</span></div></td><td>${(t.sheets||[]).length}</td><td><button class="btn sm ghost" data-share="${t.id}">Share</button></td></tr>`).join("")}</tbody></table></div>
       <div class="row" style="justify-content:space-between"><label class="row muted" style="font-size:13px;gap:6px">Rows per page<select class="f" id="pgSize" style="padding:4px 8px">${[10,25,50].map(n=>`<option ${S.pageSize===n?"selected":""}>${n}</option>`).join("")}</select></label><div style="flex:1;min-width:260px">${pg.html}</div></div>` : `<div class="empty">${S.tasks.length ? "No tasks match these filters." : "No tasks yet."}</div>`}</section></div>`;
 }
 const pendingReqs = () => (S.reqs||[]).filter(r => r.status==="pending");
@@ -747,9 +773,9 @@ function drawDrawer(){
   const fmtDate = ts => new Date(ts).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
   const scroll = $(".drawer-b")?.scrollTop || 0;
   document.body.style.overflow = "hidden";
-  document.title = (D.title || "New task") + " · MfAPIs Taskdesk";
+  document.title = (D.ticket ? D.ticket + " · " : "") + (D.title || "New task") + " · MfAPIs Taskdesk";
   $("#overlay").innerHTML = `<div class="drawer" role="dialog" aria-modal="true" aria-label="${isNew?"New task":"Task details"}">
-    <div class="drawer-h"><div class="row"><button class="btn sm" data-act="close">← Back</button><h2>${isNew?"New task":"Task details"}</h2>${isNew?"":`<span class="pill st-${D.status}">${ST[D.status]?.label||""}</span><span class="pill pr-${D.priority}">${PRI[D.priority]||""}</span><span class="due ${dueCls(D)}">${fmtDue(D.due)}</span>`}</div>
+    <div class="drawer-h"><div class="row"><button class="btn sm" data-act="close">← Back</button><h2>${isNew?"New task":"Task details"}</h2>${D.ticket?`<span class="tk tkbtn" data-copy="${esc(D.ticket)}" title="Click to copy the ticket number" role="button" tabindex="0">${esc(D.ticket)}</span>`:""}${isNew?"":`<span class="pill st-${D.status}">${ST[D.status]?.label||""}</span><span class="pill pr-${D.priority}">${PRI[D.priority]||""}</span><span class="due ${dueCls(D)}">${fmtDue(D.due)}</span>`}</div>
       <div class="row">${isNew?"":`${D.status!=="done"?`<button class="btn sm" data-act="markdone">✓ Mark done</button>`:""}<button class="btn sm" data-act="duplicate">Duplicate</button><button class="btn sm" data-share="${D.id}">Share</button>`}<button class="btn sm pri" data-act="save" title="Ctrl+S">${isNew?"Create task":"Save changes"}</button></div></div>
     <div class="drawer-b"><div class="tp">
       <section class="glass">
@@ -814,19 +840,29 @@ function logAct(t, text, type="event"){
 function closeDrawer(){ $("#unsaved")?.remove(); $("#overlay").innerHTML=""; D=null; document.body.style.overflow=""; if (hashTask()) nav(viewPath(S.lastView)); else render(); }
 
 let writing = Promise.resolve();
-function saveTask(t){
+function saveTask(t, opts = {}){
   const clean = {...t}; delete clean._orig; delete clean._snap;
   const id = clean.id; delete clean.id;
-  clean.updatedAt = Date.now();
-  writing = writing.then(()=>S.db.collection("tasks").doc(id).set(clean)).catch(e=>{ toast(e?.code==="invalid_argument"?"You can view tasks but not change them.":e?.code==="quota_exceeded"?"The task store is full. Delete old tasks first.":"Couldn't save. Try again."); throw e; });
-  return writing;
+  if (!opts.keepTime) clean.updatedAt = Date.now();
+  const run = writing.then(async () => {
+    for (let i = 0; ; i++){
+      try { await S.db.collection("tasks").doc(id).set(clean); return; }
+      catch (e){
+        // Two people drew the same random ticket number at the same moment: draw another and try again.
+        if (e?.code === "conflict" && i < 5){ clean.ticket = newTicket(); t.ticket = clean.ticket; continue; }
+        throw e;
+      }
+    }
+  });
+  writing = run.catch(() => {});   // a failed save must not block the saves after it
+  return run.catch(e => { toast(e?.code==="invalid_argument"?"You can view tasks but not change them.":e?.code==="quota_exceeded"?"The task store is full. Delete old tasks first.":"Couldn't save. Try again."); throw e; });
 }
 async function onSave(){
   readDrawer();
   if (!D.title){ toast("Give the task a name."); $("#dTitle").focus(); return; }
   if (!S.db){ toast("Saving is off in this view."); return; }
   const isNew = !D.id;
-  if (isNew){ D.id = S.db.collection("tasks").doc().id; D.createdAt = Date.now(); D.createdBy = S.meId||""; logAct(D,"created the task"); }
+  if (isNew){ D.id = S.db.collection("tasks").doc().id; D.ticket = newTicket(); D.createdAt = Date.now(); D.createdBy = S.meId||""; logAct(D,"created the task"); }
   else {
     if (D._orig.status!==D.status) logAct(D,`moved it to ${ST[D.status].label}`);
     else if (D._orig.progress!==D.progress) logAct(D,`set progress to ${D.progress}%`);
@@ -885,8 +921,9 @@ function bind(v){
 document.addEventListener("click", async e => {
   const link = e.target.closest('a[href^="/"]:not([target])');
   if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr],[data-copy]");
   if (!a) return;
+  if (a.dataset.copy){ try { await navigator.clipboard.writeText(a.dataset.copy); toast("Copied " + a.dataset.copy); } catch { toast("Copy isn't allowed here. Select the number and copy it."); } return; }
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
   if (a.dataset.decide){
     const [uid, yes] = a.dataset.decide.split(":"); const r = (S.reqs||[]).find(x => x.user_id===uid); a.disabled = true;
@@ -924,7 +961,7 @@ document.addEventListener("click", async e => {
   else if (act==="duplicate"){
     if (!S.db){ toast("Saving is off in this view."); return; }
     readDrawer(); const c = JSON.parse(JSON.stringify(D)); delete c._orig; delete c._snap;
-    c.id = S.db.collection("tasks").doc().id; c.title += " (copy)"; c.status = "todo"; c.progress = 0; delete c.completedAt;
+    c.id = S.db.collection("tasks").doc().id; c.ticket = newTicket(); c.title += " (copy)"; c.status = "todo"; c.progress = 0; delete c.completedAt;
     (c.checklist||[]).forEach(x => x.done = false); c.createdAt = Date.now(); c.createdBy = S.meId||""; c.activity = []; logAct(c,"created the task as a copy");
     try { await saveTask(c); toast("Copy created. It's in To do."); } catch {}
   }
@@ -937,7 +974,7 @@ document.addEventListener("click", async e => {
   }
   else if (act==="addcheck"){ readDrawer(); const tx = $("#cText").value.trim(); if (!tx) return; D.checklist.push({text:tx, done:false}); syncProg(); drawDrawer(); $("#cText").focus(); }
   else if (act==="exporttasks"){
-    const r = {cols:["Task","Status","Priority","Working on it","Deadline","Progress","Checklist","Sheets","Details"], rows: sortedTasks().map(t => [t.title, ST[t.status]?.label||t.status, PRI[t.priority]||"", (t.assignees||[]).map(x=>member(x)?.name||"").filter(Boolean).join("; "), t.due||"", (t.progress||0)+"%", (t.checklist||[]).length?`${t.checklist.filter(x=>x.done).length}/${t.checklist.length}`:"", (t.sheets||[]).map(x=>x.url).join(" "), t.description||""])};
+    const r = {cols:["Ticket","Task","Status","Priority","Working on it","Deadline","Progress","Checklist","Sheets","Details"], rows: sortedTasks().map(t => [t.ticket||"", t.title, ST[t.status]?.label||t.status, PRI[t.priority]||"", (t.assignees||[]).map(x=>member(x)?.name||"").filter(Boolean).join("; "), t.due||"", (t.progress||0)+"%", (t.checklist||[]).length?`${t.checklist.filter(x=>x.done).length}/${t.checklist.length}`:"", (t.sheets||[]).map(x=>x.url).join(" "), t.description||""])};
     try { await S.dl.save({filename:"tasks-"+todayStr()+".csv", data:new Blob([toCSV(r)],{type:"text/csv"})}); } catch { toast("The file wasn't saved."); }
   }
   else if (act==="del"){ if(a.dataset.confirm!=="1"){ a.dataset.confirm="1"; a.textContent="Click again to delete"; return; } const id=D.id; closeDrawer(); try{ await S.db.doc("tasks/"+id).delete(); toast("Task deleted"); }catch{ toast("Couldn't delete."); } }
@@ -999,13 +1036,13 @@ render();
     S.db.collection("tasks").onSnapshot(snap => { gotT = true; clearTimeout(timer); S.stale = false;
       S.tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
       S.tasks.forEach(t => (t.activity||[]).forEach(a => { if (a.by && a.byName) PROF[a.by] = {name: a.by===S.meId ? "You" : a.byName}; }));
-      S.loaded = true; S.live = true; if (!D) render(); else renderNav(); });
+      S.loaded = true; S.live = true; if (!D) render(); else renderNav(); backfillTickets(); });
     S.db.collection("team").orderBy("addedAt").onSnapshot(snap => { S.team = snap.docs.map(d=>({id:d.id,...d.data()})); if (!D) render(); });
     return;
   }
   if (!window.claude?.use){
     S.local = true; S.db = localDb(); S.dl = localDownloads;
-    S.db.collection("tasks").onSnapshot(snap => { S.tasks = snap.docs.map(d=>({id:d.id,...d.data()})); S.loaded = true; S.live = true; if (!D) render(); else renderNav(); });
+    S.db.collection("tasks").onSnapshot(snap => { S.tasks = snap.docs.map(d=>({id:d.id,...d.data()})); S.loaded = true; S.live = true; if (!D) render(); else renderNav(); backfillTickets(); });
     S.db.collection("team").orderBy("addedAt").onSnapshot(snap => { S.team = snap.docs.map(d=>({id:d.id,...d.data()})); if (!D) render(); });
     return;
   }

@@ -44,6 +44,10 @@ do $$ begin
   alter publication supabase_realtime add table public.taskdesk_docs;
 exception when duplicate_object then null; end $$;
 
+-- 3a. Ticket numbers (W-1234) are unique across tasks, so two people can never be given the same one.
+create unique index if not exists taskdesk_docs_ticket_uq on public.taskdesk_docs ((data->>'ticket'))
+  where collection = 'tasks' and data->>'ticket' is not null;
+
 -- 3b. Admins and access requests.
 -- A new person signs in, fills in a request, and waits. An admin approves or rejects it on the Team page.
 alter table public.taskdesk_members add column if not exists is_admin boolean not null default false;
