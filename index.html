@@ -185,6 +185,16 @@ th[data-sort]:hover{color:var(--accent)}
 .tk{font-family:var(--f-mono);font-size:11.5px;font-weight:600;color:var(--accent);letter-spacing:.02em;white-space:nowrap}
 .tkbtn{cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:2px 9px;background:var(--glass)}
 .tkbtn:hover{border-color:var(--accent)}
+.bell{position:relative;padding:7px 10px}
+.bell .bdg{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--bad);color:#fff;font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px;font-variant-numeric:tabular-nums}
+.bell.has{border-color:color-mix(in srgb,var(--bad) 55%,transparent)}
+.pop{position:fixed;width:min(430px,calc(100vw - 32px));max-height:min(72vh,660px);display:flex;flex-direction:column;background:var(--glass2);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);z-index:40;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.pop-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.pop-b{overflow:auto;flex:1;min-height:60px}
+.pop-f{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.rem{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);cursor:pointer}
+.rem:hover{background:var(--accent-soft)}
+.rem .t{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbrand{display:none}
 /* full-screen task page */
 .drawer{left:0;width:100%;border-left:0;background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%)}
@@ -201,7 +211,7 @@ label.fl.tp-title input{font-family:var(--f-display);font-size:20px;font-weight:
 tr[data-open]{cursor:pointer}
 tr[data-open]:hover{background:var(--accent-soft)}
 @media (max-width:980px){.tp{grid-template-columns:1fr}}
-@media (max-width:820px){.topbrand{display:grid}}
+@media (max-width:820px){.topbrand{display:grid}.rem .avs{display:none}.rem{grid-template-columns:minmax(0,1fr) auto}}
 .mobnav{display:none}
 @media (max-width:1100px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:1fr}}
 @media (max-width:820px){
@@ -234,7 +244,7 @@ tr[data-open]:hover{background:var(--accent-soft)}
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="q" placeholder="Search tasks, people, sheets…   press / to search" autocomplete="off">
       </div>
-      <div class="me" id="me"></div>
+      <button class="btn bell" id="bell" data-bell aria-haspopup="dialog" title="Reminders"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="bdg" hidden></span></button><div class="me" id="me"></div>
     </div>
     <nav class="mobnav glass" id="mobnav"></nav>
     <div id="view"></div>
@@ -301,6 +311,103 @@ async function backfillTickets(){
   catch {} finally { ticketing = false; }
 }
 
+/* ---------- due date reminders ---------- */
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+const SNOOZE_KEY = "taskdesk-snooze-v1", NOTIFIED_KEY = "taskdesk-notified-v1", NOTIFY_KEY = "taskdesk-notify-v1", SCOPE_KEY = "taskdesk-rscope-v1";
+S.rscope = lsGet(SCOPE_KEY, "mine"); S.bellOpen = false; S.day = todayStr();
+S.notifyOn = !!lsGet(NOTIFY_KEY, false) && "Notification" in window && Notification.permission === "granted";
+const REMIND_OPTS = [[1,"1 day before the deadline"],[0,"On the day of the deadline"],[2,"2 days before"],[3,"3 days before"],[7,"1 week before"],[-1,"No reminder"]];
+const tomorrowStr = () => { const d = new Date(); d.setDate(d.getDate()+1); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const remLabel = r => r.kind==="overdue" ? (r.n===-1 ? "1 day late" : (-r.n)+" days late") : r.kind==="today" ? "Due today" : r.n===1 ? "Due tomorrow" : "Due in "+r.n+" days";
+const remPill = k => k==="overdue" ? "st-blocked" : k==="today" ? "pr-medium" : "st-todo";
+// A task is a reminder while it is not done, has a deadline, and the deadline is within its reminder window
+// (or already past). Default window: 1 day before.
+function remindInfo(t){
+  if (!t.due || t.status==="done") return null;
+  const rd = t.remind ?? 1; if (rd < 0) return null;
+  const n = daysTo(t.due);
+  if (n < 0) return {kind:"overdue", n};
+  if (n === 0) return {kind:"today", n};
+  return n <= rd ? {kind:"soon", n} : null;
+}
+const myEmail = () => (S.backend?.me?.email || "").toLowerCase();
+function myMemberIds(){
+  const e = myEmail(), nm = (S.meName||"").toLowerCase();
+  const byEmail = S.team.filter(m => m.email && m.email.toLowerCase()===e);
+  if (byEmail.length) return byEmail.map(m => m.id);
+  return S.team.filter(m => !m.email && nm && (m.name||"").toLowerCase()===nm).map(m => m.id);
+}
+function meTag(m){
+  if (!S.backend) return "";
+  const e = myEmail();
+  if (m.email && m.email.toLowerCase()===e) return `<span class="pill st-done" style="margin-top:4px">You</span>`;
+  if (!m.email && !S.team.some(x => x.email && x.email.toLowerCase()===e)) return `<button class="btn sm ghost" style="margin-top:4px;padding:2px 8px" data-linkme="${m.id}">This is me</button>`;
+  return "";
+}
+function reminders(){
+  const ids = new Set(myMemberIds()), linked = ids.size > 0, mine = linked && S.rscope !== "all";
+  const sn = lsGet(SNOOZE_KEY, {}), today = todayStr(), list = []; let snoozed = 0;
+  for (const t of S.tasks){
+    const r = remindInfo(t); if (!r) continue;
+    if (mine && !(t.assignees||[]).some(a => ids.has(a))) continue;
+    if (sn[t.id] && sn[t.id] > today){ snoozed++; continue; }
+    list.push({t, ...r});
+  }
+  const order = {overdue:0, today:1, soon:2};
+  list.sort((a,b) => order[a.kind]-order[b.kind] || a.n-b.n || (a.t.ticket||"").localeCompare(b.t.ticket||""));
+  return {list, snoozed, mine, linked};
+}
+function reminderBanner(){
+  const R = reminders(); if (!R.list.length) return "";
+  const c = k => R.list.filter(r => r.kind===k).length;
+  const parts = [["overdue","overdue"],["today","due today"],["soon","coming up"]].filter(([k]) => c(k)).map(([k,l]) => c(k)+" "+l).join(" · ");
+  return `<div class="example" style="border-color:var(--warn)"><span><b>${R.list.length} reminder${R.list.length===1?"":"s"}:</b> ${parts}${R.mine?" (your tasks)":""}</span><button class="btn sm pri" data-bell>View</button></div>`;
+}
+function popHtml(R){
+  const groups = [["overdue","Overdue"],["today","Due today"],["soon","Coming up"]];
+  const row = r => `<div class="rem" data-open="${r.t.id}"><div style="min-width:0"><div class="t">${r.t.ticket?`<span class="tk">${esc(r.t.ticket)}</span> `:""}${esc(r.t.title)}</div><div class="row" style="margin-top:4px"><span class="pill ${remPill(r.kind)}">${remLabel(r)}</span><span class="due">${fmtDue(r.t.due)}</span></div></div><div class="avs">${(r.t.assignees||[]).map(avatarAny).join("")}</div><button class="btn sm ghost" data-snooze="${r.t.id}" title="Hide this reminder until tomorrow">Snooze</button></div>`;
+  const body = groups.map(([k,l]) => { const items = R.list.filter(r => r.kind===k); return items.length ? `<div class="navlabel" style="padding:10px 14px 4px">${l} · ${items.length}</div>${items.map(row).join("")}` : ""; }).join("");
+  const canNotify = "Notification" in window;
+  const nState = !canNotify ? "" : S.notifyOn ? "on" : Notification.permission==="denied" ? "blocked" : "off";
+  return `<div class="pop-h"><b>Reminders</b>${R.linked?`<select class="f" id="rscope" aria-label="Whose reminders"><option value="mine" ${R.mine?"selected":""}>My tasks</option><option value="all" ${R.mine?"":"selected"}>Everyone's tasks</option></select>`:""}</div>
+    <div class="pop-b">${body || `<div class="empty">Nothing due. Tasks show up here as their deadlines get close.</div>`}</div>
+    ${S.backend && !R.linked ? `<div class="muted" style="padding:8px 14px;font-size:12px">Showing everyone's tasks. Open <a href="/team" style="color:var(--accent)">Team</a> and click "This is me" on your card to see only yours.</div>` : ""}
+    <div class="pop-f">${R.snoozed ? `<button class="btn sm ghost" data-clearsnooze>Show ${R.snoozed} snoozed</button>` : "<span></span>"}${canNotify ? `<button class="btn sm ${nState==="on"?"":"pri"}" data-notifytoggle ${nState==="blocked"?"disabled":""}>${nState==="on"?"Desktop alerts: on":nState==="blocked"?"Desktop alerts blocked":"Turn on desktop alerts"}</button>` : ""}</div>`;
+}
+function renderBell(){
+  const bell = $("#bell"); if (!bell) return;
+  const R = S.loaded ? reminders() : {list:[], snoozed:0, mine:false, linked:false};
+  const n = R.list.length, bdg = bell.querySelector(".bdg");
+  bdg.textContent = n > 99 ? "99+" : String(n); bdg.hidden = !n;
+  bell.classList.toggle("has", n > 0);
+  bell.setAttribute("aria-label", n ? n+" task reminders" : "No task reminders");
+  bell.setAttribute("aria-expanded", S.bellOpen ? "true" : "false");
+  if (!D) document.title = (n ? "("+n+") " : "") + "MfAPIs Taskdesk";
+  let pop = $("#bellpop");
+  if (!S.bellOpen) pop?.remove();
+  else {
+    if (!pop){ pop = document.createElement("div"); pop.id = "bellpop"; pop.className = "pop"; pop.setAttribute("role","dialog"); pop.setAttribute("aria-label","Task reminders"); document.body.appendChild(pop); }
+    pop.innerHTML = popHtml(R);
+    const r = bell.getBoundingClientRect();
+    pop.style.top = Math.max(8, r.bottom + 8) + "px"; pop.style.right = Math.max(16, innerWidth - r.right) + "px";
+  }
+  if (S.loaded) notifyDue(R.list);
+}
+// Desktop alerts: once per task per day, only while Taskdesk is open in a browser tab.
+function notifyDue(list){
+  if (!S.notifyOn || !("Notification" in window) || Notification.permission !== "granted") return;
+  const today = todayStr(); let seen = lsGet(NOTIFIED_KEY, {}); if (seen.day !== today) seen = {day:today, ids:{}};
+  const fresh = list.filter(r => !seen.ids[r.t.id]); if (!fresh.length) return;
+  fresh.forEach(r => seen.ids[r.t.id] = 1); lsSet(NOTIFIED_KEY, seen);
+  try {
+    if (fresh.length > 3) new Notification(fresh.length+" tasks need attention", {body: fresh.slice(0,3).map(r => r.t.title).join(" · ")+" …", tag:"taskdesk-batch"});
+    else fresh.forEach(r => new Notification((r.t.ticket||"Task")+" · "+remLabel(r).toLowerCase(), {body:r.t.title, tag:r.t.id}));
+  } catch {}
+}
+document.addEventListener("change", e => { if (e.target.id === "rscope"){ S.rscope = e.target.value; lsSet(SCOPE_KEY, S.rscope); render(); } });
+setInterval(() => { if (!S.loaded) return; if (todayStr() !== S.day){ S.day = todayStr(); if (!D){ render(); return; } } renderBell(); }, 300000);
+
 /* ---------- example data (shown only while the shared store is empty, never saved) ---------- */
 const EX_TEAM = [{id:"ex1",name:"Riya Sharma",role:"Analyst"},{id:"ex2",name:"Kabir Mehta",role:"Data engineer"},{id:"ex3",name:"Anaya Rao",role:"Ops lead"}];
 function exTasks(){
@@ -330,7 +437,7 @@ const viewPath = k => k==="overview" ? "/" : "/"+k;
 const hashTask = () => { const m = location.pathname.match(/^\/task\/([^/]+)/); return m ? decodeURIComponent(m[1]) : null; };
 const cur = () => { const h = location.pathname.split("/")[1] || "overview"; if (VIEWS.some(v=>v.k===h)) S.lastView = h; return S.lastView; };
 function nav(path, replace){ if (path !== location.pathname) history[replace?"replaceState":"pushState"](null, "", path); render(); }
-function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } const t = S.tasks.find(x=>x.id===id); nav("/task/"+encodeURIComponent(t?.ticket||id)); }
+function goTask(id){ if (showingExample()){ toast("This is an example task. Create a real one to open it."); return; } const t = S.tasks.find(x=>x.id===id); S.bellOpen = false; nav("/task/"+encodeURIComponent(t?.ticket||id)); }
 function syncTaskRoute(){
   const tid = hashTask();
   if (tid){
@@ -391,6 +498,7 @@ function render(){
   bind(v);
   syncTaskRoute();
   if (!D){ document.title = "MfAPIs Taskdesk"; $("#unsaved")?.remove(); }
+  renderBell();
   $("#syncState").innerHTML = !S.db ? (S.loaded ? "Saving is off in this view. Open the page on claude.ai while signed in to save tasks." : "Connecting…")
     : S.local ? "Local mode · saved in this browser only" : (S.backend && S.stale) ? "Can't reach Supabase right now. Changes may not be saving." : S.backend ? `<span style="color:var(--ok)">●</span> Live · shared via Supabase` : S.stale ? "Can't reach saved data yet. Showing what loaded so far." : (S.live ?`<span style="color:var(--ok)">●</span> Live · shared with your team` : "Loading tasks…");
 }
@@ -421,7 +529,7 @@ function viewOverview(){
       <div><h1>${greet}${S.meName?", "+esc(S.meName.split(" ")[0]):""}</h1><div class="sub">${open.length} open tasks · ${over.length} overdue · ${week.length} due in the next 7 days</div></div>
       <div class="row"><a class="btn" href="/sheets">Merge sheets</a><button class="btn pri" data-act="new">+ New task</button></div>
     </div>
-    ${exampleBanner()}${adminBanner()}
+    ${exampleBanner()}${adminBanner()}${reminderBanner()}
     <div class="tiles">
       ${tile(open.length,"Active tasks",`${people} people working`,'<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>')}
       ${tile(review.length,"Waiting for review","Ready for sign-off",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}
@@ -564,7 +672,7 @@ function viewTeam(){
     <section class="panel glass"><h2>Add a team member</h2>
       <form id="addMember" class="row"><input class="f" id="mName" placeholder="Name" required style="flex:1;min-width:160px"><input class="f" id="mRole" placeholder="Role (optional)" style="flex:1;min-width:140px"><button class="btn pri" type="submit">Add member</button></form></section>
     <div class="team">${tm.map(m=>{ const mine = ts.filter(t=>(t.assignees||[]).includes(m.id)); const open = mine.filter(t=>t.status!=="done");
-      return `<div class="member glass"><div class="hd"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span><div style="min-width:0;flex:1"><b>${esc(m.name)}</b><div class="muted" style="font-size:12px">${esc(m.role||"Team member")}</div></div>${m.id.startsWith("ex")?"":`<button class="btn sm ghost danger" data-delm="${m.id}" aria-label="Remove ${esc(m.name)}">Remove</button>`}</div>
+      return `<div class="member glass"><div class="hd"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span><div style="min-width:0;flex:1"><b>${esc(m.name)}</b><div class="muted" style="font-size:12px">${esc(m.role||"Team member")}</div>${meTag(m)}</div>${m.id.startsWith("ex")?"":`<button class="btn sm ghost danger" data-delm="${m.id}" aria-label="Remove ${esc(m.name)}">Remove</button>`}</div>
       <div class="stats"><div><b>${open.length}</b><span>Open</span></div><div><b style="color:${mine.filter(isOver).length?"var(--bad)":"inherit"}">${mine.filter(isOver).length}</b><span>Overdue</span></div><div><b>${mine.filter(t=>t.status==="done").length}</b><span>Done</span></div></div>
       <div class="list">${open.slice(0,3).map(t=>`<div class="li" data-open="${t.id}" style="grid-template-columns:minmax(0,1fr) auto"><div class="t" style="font-size:13px">${esc(t.title)}</div><div class="due ${dueCls(t)}">${fmtDue(t.due)}</div></div>`).join("")}</div></div>`; }).join("") || `<div class="empty glass" style="border-radius:16px">No team members yet. Add the people who work on tasks above.</div>`}</div></div>`;
 }
@@ -734,13 +842,13 @@ function openTask(id){
   if (showingExample() && id){ toast("This is an example task. Create a real one to edit it."); return; }
   const t = id ? S.tasks.find(x=>x.id===id) : null;
   D = t ? JSON.parse(JSON.stringify(t)) : {id:null,title:"",description:"",status:"todo",priority:"medium",assignees:[],due:"",progress:0,sheets:[],activity:[]};
-  D.checklist ||= []; D.prs ||= []; D.sheets ||= []; D.assignees ||= []; D.activity ||= [];
+  D.checklist ||= []; if (D.remind == null) D.remind = 1; D.prs ||= []; D.sheets ||= []; D.assignees ||= []; D.activity ||= [];
   D._orig = t ? origOf(D) : null;
   drawDrawer();
   D._snap = draftKey();
 }
 const origOf = t => ({status:t.status, progress:t.progress, due:t.due||"", priority:t.priority, assignees:(t.assignees||[]).join(",")});
-function draftKey(){ readDrawer(); return JSON.stringify([D.title, D.description, D.status, D.priority, D.due, D.progress, D.assignees, D.sheets, D.checklist, D.prs]); }
+function draftKey(){ readDrawer(); return JSON.stringify([D.title, D.description, D.status, D.priority, D.due, D.progress, D.assignees, D.sheets, D.checklist, D.prs, D.remind]); }
 function syncProg(){ const c = D.checklist||[]; if (c.length) D.progress = Math.round(c.filter(x=>x.done).length/c.length*100); }
 function showUnsaved(){
   if ($("#unsaved")) return;
@@ -787,6 +895,7 @@ function drawDrawer(){
           <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
           <label class="fl">Deadline<input id="dDue" type="date" value="${esc(D.due)}"></label>
         </div>
+        <label class="fl">Reminder<select id="dRemind">${REMIND_OPTS.map(([v,l])=>`<option value="${v}" ${(D.remind??1)===v?"selected":""}>${l}</option>`).join("")}</select></label>
         <label class="fl"><span>Progress · <span id="dProgV">${D.progress||0}%</span>${checks.length?" · set by the checklist":""}</span><input id="dProg" type="range" min="0" max="100" step="${(checks.length||(D.progress||0)%5)?1:5}" value="${D.progress||0}" ${checks.length?"disabled":""}></label>
         <div class="fl">Checklist${checks.length?` · ${doneN} of ${checks.length} done`:""}
           <div class="checks">
@@ -831,6 +940,7 @@ function readDrawer(){
   D.priority = ov.querySelector("#dPri").value;
   D.due = ov.querySelector("#dDue").value;
   D.progress = +ov.querySelector("#dProg").value;
+  const rm = ov.querySelector("#dRemind"); if (rm) D.remind = +rm.value;
 }
 function logAct(t, text, type="event"){
   const e = {at:Date.now(), by:S.meId||"", text, type};
@@ -919,10 +1029,28 @@ function bind(v){
   view.querySelectorAll("[data-sel]").forEach(cb => cb.addEventListener("change", e => { e.target.checked ? S.merge.sel.add(cb.dataset.sel) : S.merge.sel.delete(cb.dataset.sel); render(); }));
 }
 document.addEventListener("click", async e => {
+  if (S.bellOpen && !e.target.closest("#bellpop,#bell")){ S.bellOpen = false; renderBell(); }
   const link = e.target.closest('a[href^="/"]:not([target])');
-  if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr],[data-copy]");
+  if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); S.bellOpen = false; nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr],[data-copy],[data-bell],[data-snooze],[data-clearsnooze],[data-notifytoggle],[data-linkme]");
   if (!a) return;
+  if (a.dataset.bell !== undefined){ S.bellOpen = !S.bellOpen; renderBell(); return; }
+  if (a.dataset.snooze){ const sn = lsGet(SNOOZE_KEY, {}); sn[a.dataset.snooze] = tomorrowStr(); lsSet(SNOOZE_KEY, sn); render(); toast("Snoozed until tomorrow."); return; }
+  if (a.dataset.clearsnooze !== undefined){ lsSet(SNOOZE_KEY, {}); render(); return; }
+  if (a.dataset.notifytoggle !== undefined){
+    if (!("Notification" in window)){ toast("This browser doesn't support desktop alerts."); return; }
+    if (S.notifyOn){ S.notifyOn = false; lsSet(NOTIFY_KEY, false); toast("Desktop alerts off."); render(); return; }
+    let perm = Notification.permission; if (perm !== "granted") { try { perm = await Notification.requestPermission(); } catch { perm = "denied"; } }
+    if (perm === "granted"){ S.notifyOn = true; lsSet(NOTIFY_KEY, true); toast("Desktop alerts on. They appear while Taskdesk is open in a browser tab."); }
+    else toast("Your browser blocked alerts for this site. Allow notifications in the site settings, then try again.");
+    render(); return;
+  }
+  if (a.dataset.linkme){
+    const m = member(a.dataset.linkme); if (!m || !myEmail()) return;
+    const {id:_id, ...rest} = m;
+    try { await S.db.doc("team/"+m.id).set({...rest, email:myEmail()}); toast(`Linked to ${m.name}. Reminders now show your tasks.`); } catch { toast("Couldn't link you to this member."); }
+    return;
+  }
   if (a.dataset.copy){ try { await navigator.clipboard.writeText(a.dataset.copy); toast("Copied " + a.dataset.copy); } catch { toast("Copy isn't allowed here. Select the number and copy it."); } return; }
   if (a.dataset.share){ e.preventDefault(); shareTask(a.dataset.share); return; }
   if (a.dataset.decide){
@@ -930,7 +1058,11 @@ document.addEventListener("click", async e => {
     try {
       await S.backend.decide(uid, yes==="1");
       // An approved person also becomes assignable on tasks, unless someone with that name is already on the team.
-      if (yes==="1" && r && !S.team.some(m => (m.name||"").toLowerCase()===r.name.toLowerCase())) await S.db.collection("team").add({name:r.name, role:r.role||"", addedAt:Date.now()});
+      if (yes==="1" && r){
+        const ex = S.team.find(m => (m.name||"").toLowerCase()===r.name.toLowerCase());
+        if (!ex) await S.db.collection("team").add({name:r.name, role:r.role||"", email:r.email, addedAt:Date.now()});
+        else if (!ex.email){ const {id:_i, ...rest} = ex; await S.db.doc("team/"+ex.id).set({...rest, email:r.email}); }
+      }
       toast(yes==="1" ? `${r?.name||"They"} can now sign in.` : "Request rejected.");
     } catch (err) { toast("Couldn't save that decision: " + (err?.message||"error")); }
     loadAdmin(true); return;
@@ -991,6 +1123,7 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||"");
+  if (e.key==="Escape" && S.bellOpen){ S.bellOpen = false; renderBell(); return; }
   if (e.key==="Escape" && D){ requestClose(); return; }
   if (D && (e.ctrlKey||e.metaKey) && (e.key==="s"||e.key==="S"||e.key==="Enter")){ e.preventDefault(); onSave(); return; }
   if (D || typing || !S.loaded || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".scrim")) return;
