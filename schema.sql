@@ -48,6 +48,21 @@ exception when duplicate_object then null; end $$;
 create unique index if not exists taskdesk_docs_ticket_uq on public.taskdesk_docs ((data->>'ticket'))
   where collection = 'tasks' and data->>'ticket' is not null;
 
+-- 3c. Image attachments. A private bucket: only team members can upload or view images.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('taskdesk-files', 'taskdesk-files', false, 5242880, array['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "taskdesk members read files" on storage.objects;
+drop policy if exists "taskdesk members upload files" on storage.objects;
+drop policy if exists "taskdesk members delete files" on storage.objects;
+create policy "taskdesk members read files" on storage.objects
+  for select to authenticated using (bucket_id = 'taskdesk-files' and public.taskdesk_is_member());
+create policy "taskdesk members upload files" on storage.objects
+  for insert to authenticated with check (bucket_id = 'taskdesk-files' and public.taskdesk_is_member());
+create policy "taskdesk members delete files" on storage.objects
+  for delete to authenticated using (bucket_id = 'taskdesk-files' and public.taskdesk_is_member());
+
 -- 3b. Admins and access requests.
 -- A new person signs in, fills in a request, and waits. An admin approves or rejects it on the Team page.
 alter table public.taskdesk_members add column if not exists is_admin boolean not null default false;

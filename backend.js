@@ -5,6 +5,7 @@
 
   const client = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
   const TABLE = "taskdesk_docs";
+  const BUCKET = "taskdesk-files";
   const newId = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "").slice(0, 20) : Math.random().toString(36).slice(2) + Date.now().toString(36));
 
   function makeDb(onError) {
@@ -168,6 +169,22 @@
         db: makeDb(onError),
         me: { id: session.user.id, name: meta.full_name || meta.name || email.split("@")[0], email },
         isAdmin: !!isAdmin,
+        // Image attachments: files live in a private bucket and are shown through short-lived signed links.
+        files: {
+          async upload(blob) {
+            const ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" }[blob.type];
+            if (!ext) throw { code: "type" };
+            const path = "files/" + newId() + "." + ext;
+            const { error } = await client.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: "31536000", upsert: false });
+            if (error) throw { code: "upload", message: error.message };
+            return path;
+          },
+          async urls(paths) {
+            const { data, error } = await client.storage.from(BUCKET).createSignedUrls(paths, 3600);
+            if (error) throw { code: "urls", message: error.message };
+            return Object.fromEntries((data || []).filter(d => d.signedUrl).map(d => [d.path, d.signedUrl]));
+          },
+        },
         signOut,
         // Admin tools (the database refuses these for anyone who isn't an admin).
         async listRequests() { const { data, error } = await client.from("taskdesk_requests").select("*").order("created_at", { ascending: false }); if (error) fail(error); return data; },

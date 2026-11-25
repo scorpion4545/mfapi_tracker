@@ -195,6 +195,13 @@ th[data-sort]:hover{color:var(--accent)}
 .rem{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line);cursor:pointer}
 .rem:hover{background:var(--accent-soft)}
 .rem .t{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dprev{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--glass);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.dprev a,.ev .txt a{color:var(--accent)}
+img.dimg{display:block;max-width:100%;max-height:420px;border-radius:8px;border:1px solid var(--line);margin:8px 0;cursor:zoom-in;background:var(--glass);min-height:48px;object-fit:contain}
+.pimg{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:8px;padding:2px 4px;background:var(--glass)}
+.pimg img.dimg{max-height:56px;min-height:0;margin:0;border:0}
+.lbx{position:fixed;inset:0;z-index:80;background:rgba(5,15,25,.88);display:grid;place-items:center;padding:20px;cursor:zoom-out}
+.lbx img{max-width:100%;max-height:100%;border-radius:8px}
 .topbrand{display:none}
 /* full-screen task page */
 .drawer{left:0;width:100%;border-left:0;background:var(--bg);background-image:radial-gradient(1200px 600px at 85% -10%,var(--bg2),transparent 60%)}
@@ -407,6 +414,96 @@ function notifyDue(list){
 }
 document.addEventListener("change", e => { if (e.target.id === "rscope"){ S.rscope = e.target.value; lsSet(SCOPE_KEY, S.rscope); render(); } });
 setInterval(() => { if (!S.loaded) return; if (todayStr() !== S.day){ S.day = todayStr(); if (!D){ render(); return; } } renderBell(); }, 300000);
+
+/* ---------- image attachments ---------- */
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/-/g, "");
+const IMG_TYPES = "image/png,image/jpeg,image/gif,image/webp";
+const imgCache = {};
+// Images are stored privately. Each <img data-img="path"> gets a short-lived link after the page draws.
+async function hydrateImages(root){
+  const els = [...(root || document).querySelectorAll("img[data-img]")]; if (!els.length || !S.files) return;
+  const now = Date.now();
+  const need = [...new Set(els.map(e => e.dataset.img).filter(p => !imgCache[p] || imgCache[p].exp < now + 300000))];
+  if (need.length){ try { const m = await S.files.urls(need); for (const p of need) if (m[p]) imgCache[p] = {url:m[p], exp: now + 3400000}; } catch {} }
+  els.forEach(e => { const c = imgCache[e.dataset.img]; if (c){ if (e.getAttribute("src") !== c.url) e.src = c.url; } else e.alt = "Image couldn't be loaded"; });
+}
+// Big photos and screenshots are shrunk (longest side 2000px) before upload; the limit is 5 MB.
+async function prepareImage(file){
+  const MAX = 5*1024*1024;
+  if (!/^image\/(png|jpe?g|gif|webp)$/i.test(file.type || "")) throw {code:"type"};
+  if (file.type === "image/gif"){ if (file.size > MAX) throw {code:"big"}; return file; }
+  let bmp; try { bmp = await createImageBitmap(file); } catch { if (file.size > MAX) throw {code:"big"}; return file; }
+  const long = Math.max(bmp.width, bmp.height), scale = long > 2000 ? 2000/long : 1;
+  if (scale === 1 && file.size <= 1.5*1024*1024){ bmp.close?.(); return file; }
+  const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width*scale)); c.height = Math.max(1, Math.round(bmp.height*scale));
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
+  let blob = await new Promise(r => c.toBlob(r, "image/webp", 0.9));
+  if (!blob || !/^image\/(webp|png|jpeg)$/.test(blob.type)) blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9));
+  if (!blob){ if (file.size > MAX) throw {code:"big"}; return file; }
+  if (scale === 1 && file.size <= MAX && blob.size >= file.size) return file;
+  if (blob.size > MAX) throw {code:"big"};
+  return blob;
+}
+function uploadError(e){
+  if (e?.code === "type") return "Only PNG, JPG, GIF or WebP images can be attached.";
+  if (e?.code === "big") return "That image is over 5 MB, even after shrinking it.";
+  const m = String(e?.message || "");
+  if (/bucket/i.test(m)) return "Image storage isn't set up yet. The admin needs to run the latest schema.sql in Supabase.";
+  if (/row-level|policy|not authorized|unauthorized|403/i.test(m)) return "You don't have permission to upload images.";
+  if (/mime|type/i.test(m)) return "Only PNG, JPG, GIF or WebP images can be attached.";
+  if (/size|large|payload/i.test(m)) return "That image is too large.";
+  return "Couldn't upload the image. Try again.";
+}
+function insertAtCursor(ta, text){
+  const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
+  const before = ta.value.slice(0, s), after = ta.value.slice(e);
+  const pre = before && !before.endsWith("\n") ? "\n" : "", post = after && !after.startsWith("\n") ? "\n" : "";
+  ta.value = before + pre + text + post + after;
+  const pos = (before + pre + text + post).length; ta.setSelectionRange(pos, pos);
+  ta.dispatchEvent(new Event("input"));
+}
+// Text with ![image](img:path) pictures and clickable links, escaped for safe display.
+function renderRich(text){
+  const re = /!\[([^\]]*)\]\(img:([A-Za-z0-9_\/.-]+)\)/g;
+  const lin = t => esc(t).replace(/(https?:\/\/[^\s<]*[^\s<.,;:!?)'"])/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  let out = "", last = 0, m, first = true;
+  while ((m = re.exec(text))){
+    let before = text.slice(last, m.index); if (!first) before = before.replace(/^\n/, ""); before = before.replace(/\n$/, "");
+    out += lin(before) + `<img class="dimg" data-img="${esc(m[2])}" alt="${esc(m[1] || "image")}">`; last = re.lastIndex; first = false;
+  }
+  let rest = text.slice(last); if (!first) rest = rest.replace(/^\n/, "");
+  return out + lin(rest);
+}
+function updateDetailsPreview(){
+  const ta = $("#dDesc"), box = $("#dPrev"); if (!ta || !box) return;
+  const has = /!\[[^\]]*\]\(img:/.test(ta.value) || /https?:\/\//.test(ta.value);
+  box.hidden = !has; if (!has) return;
+  box.innerHTML = `<div class="navlabel" style="padding:0 0 6px">Preview</div>` + renderRich(ta.value); hydrateImages(box);
+}
+function renderNotePending(){
+  const box = $("#nPend"); if (!box || !D) return;
+  box.innerHTML = (D._noteImgs || []).map((p, i) => `<span class="pimg"><img class="dimg" data-img="${esc(p)}" alt="attached image"><button type="button" class="btn sm ghost danger" data-rmnimg="${i}" aria-label="Remove image">✕</button></span>`).join("");
+  hydrateImages(box);
+}
+function openLightbox(src){
+  const d = document.createElement("div"); d.id = "lightbox"; d.className = "lbx"; d.setAttribute("role", "dialog"); d.setAttribute("aria-label", "Image");
+  const im = document.createElement("img"); im.src = src; im.alt = "Attached image"; d.appendChild(im); d.onclick = () => d.remove(); document.body.appendChild(d);
+}
+async function attachFiles(files, target){
+  if (!S.files){ toast("Image attachments need the website with Supabase."); return; }
+  toast(files.length > 1 ? "Uploading " + files.length + " images…" : "Uploading image…");
+  let done = 0;
+  for (const f of files){
+    try {
+      const path = await S.files.upload(await prepareImage(f));
+      if (!D) return;
+      if (target === "details"){ const ta = $("#dDesc"); if (ta) insertAtCursor(ta, `![image](img:${path})`); }
+      else { (D._noteImgs ||= []).push(path); renderNotePending(); }
+      done++;
+    } catch (e){ toast(uploadError(e)); }
+  }
+  if (done) toast(target === "details" ? (done === 1 ? "Image added." : done + " images added.") + " Save the task to keep it." : (done === 1 ? "Image added." : done + " images added.") + " Click Post to send it with your update.");
+}
 
 /* ---------- example data (shown only while the shared store is empty, never saved) ---------- */
 const EX_TEAM = [{id:"ex1",name:"Riya Sharma",role:"Analyst"},{id:"ex2",name:"Kabir Mehta",role:"Data engineer"},{id:"ex3",name:"Anaya Rao",role:"Ops lead"}];
@@ -890,6 +987,8 @@ function drawDrawer(){
         <label class="fl tp-title">Task<input id="dTitle" value="${esc(D.title)}" placeholder="What needs to be done?"></label>
         ${isNew||!D.createdAt?"":`<div class="muted" style="font-size:12px;margin-top:-8px">Created ${fmtDate(D.createdAt)}${D.updatedAt?` · last updated ${ago(D.updatedAt)}`:""}${D.completedAt?` · completed ${fmtDate(D.completedAt)}`:""}</div>`}
         <label class="fl">Details<textarea id="dDesc" rows="6" placeholder="Scope, links, acceptance criteria">${esc(D.description)}</textarea></label>
+        ${S.files?`<div class="row" style="margin-top:-6px"><button class="btn sm" type="button" data-act="attachdetails">Attach image</button><span class="muted" style="font-size:12px">or paste or drop images into the box</span><input type="file" id="fDetails" accept="${IMG_TYPES}" multiple hidden></div>`:""}
+        <div id="dPrev" class="dprev" hidden></div>
         <div class="three">
           <label class="fl">Status<select id="dStatus">${STATUSES.map(s=>`<option value="${s.k}" ${D.status===s.k?"selected":""}>${s.label}</option>`).join("")}</select></label>
           <label class="fl">Priority<select id="dPri">${Object.entries(PRI).map(([k,v])=>`<option value="${k}" ${D.priority===k?"selected":""}>${v}</option>`).join("")}</select></label>
@@ -906,8 +1005,9 @@ function drawDrawer(){
           <div class="picks">${S.team.length ? S.team.map(m=>`<button type="button" class="pick ${D.assignees.includes(m.id)?"on":""}" data-pick="${m.id}" aria-pressed="${D.assignees.includes(m.id)}"><span class="av" style="background:${colorFor(m.id)}">${esc(initials(m.name))}</span>${esc(m.name)}</button>`).join("") : `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">Add people on the <a href="/team" data-act="close" style="color:var(--accent)">Team</a> page first.</span>`}</div></div>
         ${isNew ? "" : `<div class="fl">Notes & activity
           <div style="display:flex;flex-direction:column;gap:8px;text-transform:none;letter-spacing:0;font-weight:400">
-            <div class="row"><input class="f" id="nText" placeholder="Add an update for the team, then press Enter" style="flex:1;min-width:0"><button class="btn sm" type="button" data-act="note">Post</button></div>
-            <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${esc(a.text)}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
+            <div class="row"><input class="f" id="nText" placeholder="Add an update for the team, then press Enter" style="flex:1;min-width:0" value="${esc(D._noteText||"")}">${S.files?`<button class="btn sm" type="button" data-act="attachnote" title="Attach an image (or paste one)">Image</button>`:""}<button class="btn sm" type="button" data-act="note">Post</button></div>
+            ${S.files?`<div id="nPend" class="row"></div><input type="file" id="fNote" accept="${IMG_TYPES}" multiple hidden>`:""}
+            <div class="feed">${[...(D.activity||[])].reverse().map(a=>`<div class="ev ${a.type==="note"?"note":""}"><span class="dot" style="margin-top:6px;background:${a.type==="note"?"var(--info)":"var(--accent)"}"></span><div><div><b data-uid="${esc(a.by||"")}">${esc(nameOf(a.by))}</b> ${a.type==="note"?"posted an update":esc(a.text)} <span class="when">· ${ago(a.at)}</span></div>${a.type==="note"?`<div class="txt">${a.text?renderRich(a.text):""}${(a.images||[]).map(p=>`<img class="dimg" data-img="${esc(p)}" alt="attached image">`).join("")}</div>`:""}</div></div>`).join("") || `<span class="muted">No activity yet.</span>`}</div></div></div>`}
       </section>
       <section class="glass">
         <div class="panel-h"><h2>PR links</h2><span class="muted" style="font-size:12px">${D.prs.length} linked</span></div>
@@ -929,6 +1029,16 @@ function drawDrawer(){
   ov.querySelectorAll("[data-chk]").forEach(c => c.addEventListener("change", () => { readDrawer(); D.checklist[+c.dataset.chk].done = c.checked; syncProg(); drawDrawer(); }));
   const onEnter = (sel, act) => { const el = ov.querySelector(sel); if (el) el.addEventListener("keydown", e => { if (e.key==="Enter" && !e.ctrlKey && !e.metaKey){ e.preventDefault(); ov.querySelector(`[data-act="${act}"]`).click(); } }); };
   onEnter("#cText","addcheck"); onEnter("#nText","note"); onEnter("#sUrl","addsheet"); onEnter("#pUrl","addpr"); onEnter("#pNote","addpr");
+  const imgFiles = list => [...(list || [])].filter(f => f.type && f.type.startsWith("image/"));
+  const hook = el => { if (!el) return; const tg = el.id === "dDesc" ? "details" : "note";
+    el.addEventListener("paste", e => { const fs = imgFiles(e.clipboardData?.files); if (!fs.length) return; e.preventDefault(); attachFiles(fs, tg); });
+    el.addEventListener("dragover", e => { if ([...(e.dataTransfer?.types || [])].includes("Files")) e.preventDefault(); });
+    el.addEventListener("drop", e => { const fs = imgFiles(e.dataTransfer?.files); if (!fs.length) return; e.preventDefault(); attachFiles(fs, tg); }); };
+  hook(ta); hook(ov.querySelector("#nText"));
+  let pvT; ta.addEventListener("input", () => { clearTimeout(pvT); pvT = setTimeout(updateDetailsPreview, 250); });
+  [["#fDetails","details"],["#fNote","note"]].forEach(([sel, tg]) => ov.querySelector(sel)?.addEventListener("change", e => {
+    const fs = imgFiles(e.target.files); if (e.target.files.length && !fs.length) toast("Choose a PNG, JPG, GIF or WebP image."); else if (fs.length) attachFiles(fs, tg); e.target.value = ""; }));
+  renderNotePending(); updateDetailsPreview(); hydrateImages(ov);
   ov.querySelector(".drawer-b").scrollTop = scroll;
   if (isNew && !D.title) ov.querySelector("#dTitle").focus();
 }
@@ -941,9 +1051,10 @@ function readDrawer(){
   D.due = ov.querySelector("#dDue").value;
   D.progress = +ov.querySelector("#dProg").value;
   const rm = ov.querySelector("#dRemind"); if (rm) D.remind = +rm.value;
+  const nt = ov.querySelector("#nText"); if (nt) D._noteText = nt.value;
 }
-function logAct(t, text, type="event"){
-  const e = {at:Date.now(), by:S.meId||"", text, type};
+function logAct(t, text, type="event", images){
+  const e = {at:Date.now(), by:S.meId||"", text, type}; if (images && images.length) e.images = images;
   if (S.backend) e.byName = S.meName; // website mode: no profile service, so keep the author's name
   t.activity = [...(t.activity||[]), e].slice(-40);
 }
@@ -951,7 +1062,7 @@ function closeDrawer(){ $("#unsaved")?.remove(); $("#overlay").innerHTML=""; D=n
 
 let writing = Promise.resolve();
 function saveTask(t, opts = {}){
-  const clean = {...t}; delete clean._orig; delete clean._snap;
+  const clean = {...t}; delete clean._orig; delete clean._snap; delete clean._noteText; delete clean._noteImgs;
   const id = clean.id; delete clean.id;
   if (!opts.keepTime) clean.updatedAt = Date.now();
   const run = writing.then(async () => {
@@ -1030,10 +1141,12 @@ function bind(v){
 }
 document.addEventListener("click", async e => {
   if (S.bellOpen && !e.target.closest("#bellpop,#bell")){ S.bellOpen = false; renderBell(); }
+  const zoom = e.target.closest("img.dimg"); if (zoom && zoom.src && !zoom.closest(".pimg")){ openLightbox(zoom.src); return; }
   const link = e.target.closest('a[href^="/"]:not([target])');
   if (link && !link.dataset.act && !link.dataset.open && !e.ctrlKey && !e.metaKey && !e.shiftKey){ e.preventDefault(); S.bellOpen = false; nav(link.getAttribute("href")); window.scrollTo(0, 0); return; }
-  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr],[data-copy],[data-bell],[data-snooze],[data-clearsnooze],[data-notifytoggle],[data-linkme]");
+  const a = e.target.closest("[data-act],[data-open],[data-pick],[data-rmsheet],[data-delm],[data-rmup],[data-share],[data-page],[data-rmchk],[data-sort],[data-decide],[data-rmmember],[data-rmpr],[data-copy],[data-bell],[data-snooze],[data-clearsnooze],[data-notifytoggle],[data-linkme],[data-rmnimg]");
   if (!a) return;
+  if (a.dataset.rmnimg !== undefined){ (D._noteImgs || []).splice(+a.dataset.rmnimg, 1); renderNotePending(); return; }
   if (a.dataset.bell !== undefined){ S.bellOpen = !S.bellOpen; renderBell(); return; }
   if (a.dataset.snooze){ const sn = lsGet(SNOOZE_KEY, {}); sn[a.dataset.snooze] = tomorrowStr(); lsSet(SNOOZE_KEY, sn); render(); toast("Snoozed until tomorrow."); return; }
   if (a.dataset.clearsnooze !== undefined){ lsSet(SNOOZE_KEY, {}); render(); return; }
@@ -1086,13 +1199,15 @@ document.addEventListener("click", async e => {
   if (act==="new"){ openTask(null); if (D && a.dataset.status){ D.status = a.dataset.status; drawDrawer(); D._snap = draftKey(); } }
   else if (act==="close"){ if (D && !a.dataset.force && draftKey()!==D._snap){ e.preventDefault(); showUnsaved(); return; } e.preventDefault(); closeDrawer(); if (a.tagName==="A") nav(a.getAttribute("href")); }
   else if (act==="keepediting") $("#unsaved")?.remove();
+  else if (act==="attachdetails") $("#fDetails")?.click();
+  else if (act==="attachnote") $("#fNote")?.click();
   else if (act==="reqrefresh"){ await loadAdmin(true); toast("Up to date"); }
   else if (act==="saveclose"){ $("#unsaved")?.remove(); if (await onSave() && D) closeDrawer(); }
   else if (act==="save") onSave();
   else if (act==="markdone"){ $("#dStatus").value = "done"; onSave(); }
   else if (act==="duplicate"){
     if (!S.db){ toast("Saving is off in this view."); return; }
-    readDrawer(); const c = JSON.parse(JSON.stringify(D)); delete c._orig; delete c._snap;
+    readDrawer(); const c = JSON.parse(JSON.stringify(D)); delete c._orig; delete c._snap; delete c._noteText; delete c._noteImgs;
     c.id = S.db.collection("tasks").doc().id; c.ticket = newTicket(); c.title += " (copy)"; c.status = "todo"; c.progress = 0; delete c.completedAt;
     (c.checklist||[]).forEach(x => x.done = false); c.createdAt = Date.now(); c.createdBy = S.meId||""; c.activity = []; logAct(c,"created the task as a copy");
     try { await saveTask(c); toast("Copy created. It's in To do."); } catch {}
@@ -1113,7 +1228,7 @@ document.addEventListener("click", async e => {
   else if (act==="addsheet"){ readDrawer(); const url=$("#sUrl").value.trim(); if(!url){toast("Paste a sheet link.");return;} if(!/^https?:\/\//i.test(url)){toast("That doesn't look like a link.");return;}
     const name=$("#sName").value.trim() || (sheetIdFromUrl(url)?"Google Sheet "+(D.sheets.length+1):url.replace(/^https?:\/\//,"").slice(0,40));
     D.sheets.push({name,url}); if(D.id) logAct(D,`attached sheet “${name}”`); drawDrawer(); }
-  else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); if(!txt) return; logAct(D,txt,"note"); const t={...D}; try{ await saveTask(t); D._orig=origOf(D); drawDrawer(); D._snap=draftKey(); }catch{} }
+  else if (act==="note"){ readDrawer(); const txt=$("#nText").value.trim(); const imgs=D._noteImgs||[]; if(!txt && !imgs.length) return; logAct(D,txt,"note",imgs); D._noteText=""; D._noteImgs=[]; const t={...D}; try{ await saveTask(t); D._orig=origOf(D); drawDrawer(); D._snap=draftKey(); }catch{} }
   else if (act==="mergethis"){ const id=D.id; closeDrawer(); S.merge.sel=new Set(allSheets().filter(s=>s.task.id===id&&sheetIdFromUrl(s.url)).map(s=>s.key)); S.merge.result=null; S.merge.msg=null; nav("/sheets"); }
   else if (act==="merge") doMerge();
   else if (act==="gconnect"){ try { await window.TaskdeskGoogle.signIn(); toast("Google connected"); } catch(err){ toast(err.message); } render(); }
@@ -1123,6 +1238,7 @@ document.addEventListener("click", async e => {
 });
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||"");
+  if (e.key==="Escape" && $("#lightbox")){ $("#lightbox").remove(); return; }
   if (e.key==="Escape" && S.bellOpen){ S.bellOpen = false; renderBell(); return; }
   if (e.key==="Escape" && D){ requestClose(); return; }
   if (D && (e.ctrlKey||e.metaKey) && (e.key==="s"||e.key==="S"||e.key==="Enter")){ e.preventDefault(); onSave(); return; }
@@ -1152,6 +1268,16 @@ function localDb(){
   window.addEventListener("storage", e => { if (e.key===KEY){ try { store = JSON.parse(e.newValue||"{}"); } catch {} subs.forEach(s=>s()); } });
   return { collection: c => colRef(c), doc: p => { const [c,id] = p.split("/"); return docRef(c,id); } };
 }
+const localFiles = {
+  async upload(blob){
+    const ext = {"image/png":"png","image/jpeg":"jpg","image/gif":"gif","image/webp":"webp"}[blob.type]; if (!ext) throw {code:"type"};
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+    const path = "files/" + uid() + "." + ext; const all = lsGet("taskdesk-local-files-v1", {}); all[path] = data;
+    try { localStorage.setItem("taskdesk-local-files-v1", JSON.stringify(all)); } catch { throw {code:"big", message:"Browser storage is full"}; }
+    return path;
+  },
+  async urls(paths){ const all = lsGet("taskdesk-local-files-v1", {}); return Object.fromEntries(paths.filter(p => all[p]).map(p => [p, all[p]])); },
+};
 const localDownloads = { save: async ({filename, data}) => { const a = document.createElement("a"); a.href = URL.createObjectURL(data); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000); } };
 
 /* ---------- boot ---------- */
@@ -1160,7 +1286,7 @@ render();
   if (!window.claude?.use && window.TaskdeskBackend){
     const b = await window.TaskdeskBackend.start(err => { S.stale = true; render(); });
     if (!b) return;
-    S.backend = b; S.db = b.db; S.dl = localDownloads; S.meId = b.me.id; S.meName = b.me.name;
+    S.backend = b; S.db = b.db; S.files = b.files; S.dl = localDownloads; S.meId = b.me.id; S.meName = b.me.name;
     loadAdmin(); setInterval(loadAdmin, 60000);
     $("#me").innerHTML = `<span class="av" style="background:${colorFor(b.me.id)};margin:0;border:0;width:30px;height:30px">${esc(initials(b.me.name))}</span><span>${esc(b.me.name)}</span><button class="btn sm ghost" id="signOut">Sign out</button>`;
     $("#signOut").onclick = () => b.signOut();
@@ -1174,7 +1300,7 @@ render();
     return;
   }
   if (!window.claude?.use){
-    S.local = true; S.db = localDb(); S.dl = localDownloads;
+    S.local = true; S.db = localDb(); S.files = localFiles; S.dl = localDownloads;
     S.db.collection("tasks").onSnapshot(snap => { S.tasks = snap.docs.map(d=>({id:d.id,...d.data()})); S.loaded = true; S.live = true; if (!D) render(); else renderNav(); backfillTickets(); });
     S.db.collection("team").orderBy("addedAt").onSnapshot(snap => { S.team = snap.docs.map(d=>({id:d.id,...d.data()})); if (!D) render(); });
     return;
